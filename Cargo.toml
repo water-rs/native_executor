@@ -5,6 +5,7 @@ edition = "2024"
 authors = ["Lexo Liu"]
 license = "MIT"
 repository = "https://github.com/waterui/native-executor"
+description = "Platform-native async task executor"
 keywords = ["task", "async", "concurrency", "waterui"]
 categories = ["asynchronous", "concurrency"]
 
