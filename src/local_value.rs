@@ -5,10 +5,28 @@ use core::{
 };
 use std::thread::{ThreadId, current};
 
-/// A thread-local value that can only be accessed on the thread where it was created.
+/// A thread-local value that enforces single-thread access patterns.
 ///
-/// This type provides thread safety by ensuring that the contained value can only be
-/// accessed, mutated, or dropped on the thread where it was originally created.
+/// `LocalValue<T>` provides compile-time and runtime thread safety by ensuring that
+/// the contained value can only be accessed, mutated, or dropped on the thread where
+/// it was originally created. This is useful for working with thread-local storage,
+/// non-Send types, or maintaining thread affinity for performance reasons.
+///
+/// # Thread Safety
+/// - Implements `Send` and `Sync` to allow transfer between threads
+/// - Runtime checks ensure all operations occur on the original thread
+/// - Panics if accessed from a different thread (fail-fast safety)
+///
+/// # Examples
+/// ```rust
+/// use native_executor::LocalValue;
+///
+/// let local = LocalValue::new(42);
+/// assert_eq!(*local, 42); // ✅ OK on same thread
+/// 
+/// // Moving to another thread would allow transfer, but access would panic
+/// // std::thread::spawn(move || *local); // ❌ Would panic at runtime
+/// ```
 #[derive(Debug)]
 pub struct LocalValue<T> {
     created: ThreadId,
@@ -90,7 +108,34 @@ impl<T> From<T> for LocalValue<T> {
 unsafe impl<T: Send> Send for LocalValue<T> {}
 unsafe impl<T: Sync> Sync for LocalValue<T> {}
 
-/// A value that can be taken only once, providing interior mutability and thread-local safety.
+/// A value that can be consumed exactly once, with thread-local safety guarantees.
+///
+/// `OnceValue<T>` combines the thread-local safety of `LocalValue<T>` with single-consumption
+/// semantics. The value can be read multiple times but taken (consumed) only once.
+/// After consumption, all access attempts will panic, providing fail-fast safety.
+///
+/// # Use Cases
+/// - Resource initialization that should happen exactly once
+/// - Transferring ownership in controlled scenarios  
+/// - Configuration values that are consumed during setup
+///
+/// # Examples
+/// ```rust
+/// use native_executor::OnceValue;
+///
+/// let once = OnceValue::new("consume me");
+/// 
+/// // Multiple reads are allowed
+/// assert_eq!(&*once.get(), "consume me");
+/// assert_eq!(&*once.get(), "consume me");
+/// 
+/// // Single consumption
+/// let value = once.take();
+/// assert_eq!(value, "consume me");
+/// 
+/// // Further access would panic
+/// // once.get(); // ❌ Would panic - value consumed
+/// ```
 #[derive(Debug)]
 pub struct OnceValue<T>(LocalValue<RefCell<Option<T>>>);
 

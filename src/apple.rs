@@ -1,3 +1,9 @@
+//! Apple platform implementation using Grand Central Dispatch (GCD).
+//!
+//! This module provides the native executor implementation for Apple platforms
+//! (macOS, iOS, tvOS, watchOS) by leveraging Grand Central Dispatch for optimal
+//! performance and system integration.
+
 use core::time::Duration;
 use dispatch::{Queue, QueuePriority};
 
@@ -11,7 +17,12 @@ impl From<Priority> for QueuePriority {
         }
     }
 }
+/// Apple platform executor implementation using Grand Central Dispatch.
+///
+/// This executor provides optimal performance on Apple platforms by directly
+/// leveraging GCD's system-level thread pools and scheduling primitives.
 pub struct ApplePlatformExecutor;
+
 impl PlatformExecutor for ApplePlatformExecutor {
     fn exec_main(f: impl FnOnce() + Send + 'static) {
         let main = Queue::main();

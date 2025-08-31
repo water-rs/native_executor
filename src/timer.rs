@@ -1,7 +1,29 @@
-//! Timer functionality for async operations.
+//! High-precision timer functionality for async operations.
 //!
-//! This module provides utilities for creating timed futures that resolve after a specified duration.
-//! It's useful for implementing delays, timeouts, and other time-based operations in async code.
+//! This module provides platform-native timer utilities that leverage operating system
+//! scheduling primitives for accurate timing. The timers integrate seamlessly with the
+//! async runtime and provide precise delays without busy-waiting.
+//!
+//! # Platform Integration
+//! - **Apple platforms**: Uses Grand Central Dispatch's `dispatch_after` for optimal precision
+//! - **Other platforms**: Will use platform-specific high-resolution timer APIs
+//!
+//! # Examples
+//! ```rust
+//! use native_executor::timer::{Timer, sleep};
+//! use std::time::Duration;
+//!
+//! async fn timing_example() {
+//!     // Precise millisecond timing
+//!     Timer::after(Duration::from_millis(100)).await;
+//!     
+//!     // Convenient second-based delays  
+//!     Timer::after_secs(2).await;
+//!     
+//!     // Simple sleep function
+//!     sleep(1).await;
+//! }
+//! ```
 
 use core::{
     future::Future,
@@ -15,12 +37,33 @@ use alloc::sync::Arc;
 
 use crate::exec_after;
 
-/// A future that completes after a specified duration has elapsed.
+/// A high-precision future that completes after a specified duration.
 ///
-/// A timer that can be awaited as a `Future` to introduce delays in async code.
+/// `Timer` provides platform-native timing capabilities that leverage operating system
+/// scheduling primitives for accurate delays without busy-waiting. The timer integrates
+/// seamlessly with async/await and provides zero-cost abstraction over native OS APIs.
 ///
-/// This struct implements the `Future` trait and can be awaited in async contexts
-/// to pause execution for the given duration.
+/// # Platform Behavior
+/// - **Apple platforms**: Uses GCD's `dispatch_after` for precise scheduling
+/// - **Other platforms**: Will use platform-specific high-resolution APIs
+///
+/// # Performance
+/// Unlike thread-based sleep implementations, `Timer` doesn't block threads and
+/// allows the executor to handle other tasks while waiting.
+///
+/// # Examples
+/// ```rust
+/// use native_executor::timer::Timer;
+/// use std::time::Duration;
+///
+/// async fn precise_timing() {
+///     // Millisecond precision timing
+///     Timer::after(Duration::from_millis(250)).await;
+///     
+///     // Second-based convenience method
+///     Timer::after_secs(2).await;
+/// }
+/// ```
 #[derive(Debug)]
 pub struct Timer {
     /// The duration to wait. This is taken (set to None) after the timer is started.
@@ -117,19 +160,23 @@ impl Future for Timer {
 
 /// Suspends the current async task for the specified number of seconds.
 ///
-/// This is a convenience wrapper around `Timer::after`.
+/// This convenience function provides a simple interface for second-based delays,
+/// using the same high-precision platform-native timing as `Timer::after`.
 ///
 /// # Arguments
+/// * `secs` - The number of seconds to sleep
 ///
-/// * `secs` - The number of seconds to sleep.
+/// # Platform Integration
+/// Uses the same platform-native scheduling as `Timer` for consistent precision.
 ///
-/// # Example
+/// # Examples
+/// ```rust
+/// use native_executor::timer::sleep;
 ///
-/// ```
-/// async fn example() {
-///     println!("Going to sleep");
-///     sleep(2).await;
-///     println!("Woke up after 2 seconds");
+/// async fn delayed_operation() {
+///     println!("Starting operation");
+///     sleep(2).await;  // High-precision 2-second delay
+///     println!("Operation resumed after 2 seconds");
 /// }
 /// ```
 pub async fn sleep(secs: u64) {

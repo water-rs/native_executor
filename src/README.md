@@ -1,75 +1,85 @@
-# Native Executor
+# Native Executor Source Code
 
-A platform-native asynchronous task executor for Rust that leverages system-specific task scheduling capabilities.
+This directory contains the core implementation of the native-executor library.
 
-## Overview
+## Architecture Overview
 
-The Native Executor library provides a clean, efficient way to execute asynchronous tasks on platform-native threading and scheduling mechanisms. It currently uses Apple's Grand Central Dispatch (GCD) on macOS and iOS platforms, with plans to extend to other platforms in future versions.
+The Native Executor provides a high-performance, platform-native asynchronous task executor that leverages operating system primitives for optimal performance. The library uses a trait-based design with platform-specific implementations to provide zero-cost abstractions over native OS APIs.
 
-## Core Components
+## Module Structure
 
-### Task Execution
+### `lib.rs`
+Core library entry point containing:
+- `Task<T>` - Thread-safe async task handles with priority control
+- `LocalTask<T>` - Thread-local task handles for non-Send futures
+- `Priority` - Task scheduling priority levels (Default, Background)
+- Main API functions (`task`, `exec_main`, etc.)
 
-- **Task**: Thread-safe task type that can be awaited or canceled
-- **LocalTask**: Thread-local task variant for non-Send futures
-- **Priority levels**: Control over execution priority (Default, Background)
+### `apple.rs` 
+Apple platform implementation using Grand Central Dispatch:
+- `ApplePlatformExecutor` - GCD-based task scheduling
+- Priority mapping to GCD queue priorities
+- Main thread and background execution with optimal system integration
 
-### Thread Safety Utilities
+### `timer.rs`
+High-precision timer implementation:
+- `Timer` - Platform-native timing futures with zero busy-waiting
+- `sleep()` - Convenience function for second-based delays
+- Leverages OS scheduling for accurate timing
 
-- **LocalValue**: Container ensuring values are only accessed on their original thread
-- **OnceValue**: Value container that can be taken exactly once
-- **MainValue**: Safe container for values that must be accessed on the main thread
+### `local_value.rs`
+Thread-safety utilities:
+- `LocalValue<T>` - Thread-local value containers with runtime checks
+- `OnceValue<T>` - Single-consumption value wrappers
+- Thread affinity enforcement with fail-fast safety
 
-### Timing Utilities
+### `main_value.rs`
+Main-thread access patterns:
+- `MainValue<T>` - Cross-thread safe main-thread value access
+- Async main-thread operation scheduling
+- Safe UI and API access from any thread context
 
-- **Timer**: Future that completes after a specified duration
-- **sleep**: Convenience function for timed waits
+### `main.rs`
+Example binary demonstrating basic usage patterns.
 
-## Usage Examples
+## Platform Abstraction
 
-Spawn a basic task:
-
-```rust
-use native_executor::task;
-
-task(async {
-    println!("Running in a background task");
-});
-```
-
-Run code on the main thread:
-
-```rust
-use native_executor::Task;
-
-let result = Task::on_main(async {
-    // This code will execute on the main thread
-    42
-}).await;
-```
-
-Timer operations:
+The library uses a trait-based design for platform independence:
 
 ```rust
-use native_executor::timer::{Timer, sleep};
-use std::time::Duration;
-
-async fn example() {
-    // Wait for 500ms
-    Timer::after(Duration::from_millis(500)).await;
-
-    // Wait for 2 seconds
-    sleep(2).await;
+trait PlatformExecutor {
+    fn exec_main(f: impl FnOnce() + Send + 'static);
+    fn exec(f: impl FnOnce() + Send + 'static, priority: Priority);
+    fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static);
 }
 ```
 
-## Planned Improvements
+### Current Implementation
+- **Apple Platforms**: Full GCD integration via `ApplePlatformExecutor`
+  - Maps to system thread pools and dispatch queues
+  - Priority levels mapped to GCD queue priorities
+  - Main thread execution via `dispatch_async_f(dispatch_get_main_queue())`
 
-- Support for Windows platform
-- Support for Linux platform
-- Support for Android platform
-- Additional executor features for common use cases
+### Planned Implementations
+- **Windows**: Thread pool APIs and completion ports
+- **Linux**: epoll/io_uring based implementation  
+- **Android**: Android-specific optimizations
+- **WebAssembly**: Browser and WASI compatibility
 
-## Technical Implementation
+## Key Design Principles
 
-The library builds on top of executor-core and async-task, providing a clean API while efficiently utilizing platform-specific threading capabilities.
+1. **Zero-cost abstractions**: Minimal overhead over direct OS API usage
+2. **Platform-native performance**: Leverage OS primitives for optimal scheduling
+3. **Memory safety**: Compile-time and runtime safety guarantees
+4. **Thread-safety**: Safe cross-thread communication patterns
+5. **Fail-fast safety**: Runtime checks with clear panic messages
+
+## Dependencies
+
+- `async-task`: Task spawning and management
+- `executor-core`: Core executor trait definitions  
+- `futures-lite`: Future utilities and combinators
+- `spin`: Lock-free atomic operations
+- `dispatch`: Apple GCD bindings (Apple platforms only)
+
+The implementation prioritizes minimal dependencies while maximizing platform integration and performance.
