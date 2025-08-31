@@ -1,0 +1,30 @@
+[package]
+name = "native-executor"
+version = "0.1.0"
+edition = "2024"
+authors = ["Lexo Liu"]
+license = "MIT"
+repository = "https://github.com/waterui/native-executor"
+keywords = ["task", "async", "concurrency", "waterui"]
+categories = ["asynchronous", "concurrency"]
+
+[dependencies]
+async-task = "4.7.1"
+executor-core = { version = "0.1.0", default-features = false }
+futures-lite = "2.6"
+spin = "0.10"
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+dispatch = "0.2.0"
+
+[lints]
+rust.missing_debug_implementations = "warn"
+clippy.all = "warn"
+clippy.style = "warn"
+clippy.correctness = "warn"
+clippy.complexity = "warn"
+clippy.suspicious = "warn"
+clippy.perf = "warn"
+clippy.pedantic = "warn"
+clippy.nursery = "warn"
+
