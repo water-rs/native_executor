@@ -7,8 +7,11 @@ mod apple;
 mod local_value;
 use executor_core::Executor;
 pub use local_value::{LocalValue, OnceValue};
+#[cfg(target_vendor = "apple")]
 mod main_value;
+#[cfg(target_vendor = "apple")]
 pub use main_value::MainValue;
+#[cfg(target_vendor = "apple")]
 pub mod timer;
 use core::mem::ManuallyDrop;
 use core::time::Duration;
@@ -24,6 +27,7 @@ trait PlatformExecutor {
     fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static);
 }
 
+#[cfg(target_vendor = "apple")]
 impl Executor for DefaultExecutor {
     fn spawn<T: Send + 'static>(
         &self,
@@ -42,13 +46,13 @@ use async_task::Runnable;
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Priority {
     /// Standard priority level for most application tasks.
-    /// 
+    ///
     /// This is the default priority that provides balanced execution
     /// suitable for general-purpose async operations.
     #[default]
     Default,
     /// Lower priority for background tasks and non-critical operations.
-    /// 
+    ///
     /// Background tasks yield CPU time to higher-priority tasks and are
     /// ideal for operations like cleanup, logging, or data processing
     /// that don't require immediate completion.
@@ -62,7 +66,7 @@ pub enum Priority {
 /// and can be awaited to retrieve their results.
 ///
 /// # Thread Safety
-/// 
+///
 /// Tasks are `Send` and `Sync`, allowing them to be moved between threads and
 /// shared safely. The underlying execution is handled by the platform's scheduler.
 ///
@@ -73,7 +77,7 @@ pub enum Priority {
 ///
 /// // Spawn a task with default priority
 /// let task = Task::new(async { 42 });
-/// 
+///
 /// // Spawn a background task
 /// let bg_task = Task::with_priority(async { "background" }, Priority::Background);
 /// ```
@@ -107,7 +111,7 @@ impl<T: 'static + Send> Task<T> {
     /// # Examples
     /// ```rust
     /// use native_executor::Task;
-    /// 
+    ///
     /// let task = Task::new(async { 42 + 58 });
     /// // let result = task.await; // Returns 100
     /// ```
@@ -133,12 +137,12 @@ impl<T: 'static + Send> Task<T> {
     /// # Examples
     /// ```rust
     /// use native_executor::{Task, Priority};
-    /// 
+    ///
     /// // High-priority task for time-sensitive operations
-    /// let urgent = Task::with_priority(async { 
-    ///     process_user_input().await 
+    /// let urgent = Task::with_priority(async {
+    ///     process_user_input().await
     /// }, Priority::Default);
-    /// 
+    ///
     /// // Background task that won't interfere with UI responsiveness
     /// let cleanup = Task::with_priority(async {
     ///     clean_temporary_files().await
@@ -187,7 +191,7 @@ impl<T: 'static + Send> Task<T> {
     /// # Examples
     /// ```rust
     /// use native_executor::Task;
-    /// 
+    ///
     /// // UI update that must happen on the main thread
     /// let ui_task = Task::on_main(async {
     ///     update_window_title("Processing...").await;
@@ -237,7 +241,7 @@ impl<T: Send> Future for Task<T> {
 /// ```rust
 /// use native_executor::LocalTask;
 /// use std::rc::Rc;
-/// 
+///
 /// // Rc is not Send, so we need LocalTask
 /// let local_data = Rc::new(42);
 /// let task = LocalTask::on_main(async move {
@@ -270,7 +274,7 @@ impl<T: 'static> LocalTask<T> {
     /// ```rust
     /// use native_executor::LocalTask;
     /// use std::rc::Rc;
-    /// 
+    ///
     /// let shared_data = Rc::new("thread-local data");
     /// let task = LocalTask::on_main(async move {
     ///     println!("Data: {}", shared_data);
@@ -349,6 +353,7 @@ where
 ///
 /// # Parameters
 /// * `f` - The function to execute on the main thread
+#[cfg(target_vendor = "apple")]
 fn exec_main(f: impl FnOnce() + Send + 'static) {
     DefaultExecutor::exec_main(f);
 }
@@ -358,6 +363,7 @@ fn exec_main(f: impl FnOnce() + Send + 'static) {
 /// # Parameters
 /// * `f` - The function to execute
 /// * `priority` - The execution priority for the function
+#[cfg(target_vendor = "apple")]
 fn exec(f: impl FnOnce() + Send + 'static, priority: Priority) {
     DefaultExecutor::exec(f, priority);
 }
@@ -367,6 +373,7 @@ fn exec(f: impl FnOnce() + Send + 'static, priority: Priority) {
 /// # Parameters
 /// * `delay` - The duration to wait before executing the function
 /// * `f` - The function to execute after the delay
+#[cfg(target_vendor = "apple")]
 fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static) {
     DefaultExecutor::exec_after(delay, f);
 }
