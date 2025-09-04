@@ -1,24 +1,15 @@
-//! Safe cross-thread access to main-thread-only values.
+//! Cross-thread safe values with main-thread execution guarantees.
 //!
-//! This module provides `MainValue<T>`, which allows safe access to values that must
-//! be accessed or dropped on the main thread. It enables cross-thread sharing while
-//! ensuring all operations on the wrapped value occur on the main thread through
-//! asynchronous scheduling.
+//! `MainValue<T>` enables sharing values across threads while ensuring all access
+//! and drop operations occur on the main thread via async scheduling.
 //!
-//! # Use Cases
-//! - UI elements and frameworks that require main-thread access
-//! - Platform APIs that must be called from the main thread
-//! - Thread-local resources that need cross-thread coordination
-//!
-//! # Examples
 //! ```rust
 //! use native_executor::MainValue;
 //!
-//! // Create a main-thread value
-//! let ui_state = MainValue::new(String::from("Button Text"));
-//!
-//! // Access from any thread - execution happens on main thread
-//! let length = ui_state.handle(|text| text.len()).await;
+//! let ui_data = MainValue::new(String::from("Button"));
+//! # async {
+//! let len = ui_data.handle(|s| s.len()).await;  // Executes on main thread
+//! # };
 //! ```
 #![allow(clippy::non_send_fields_in_send_ty)]
 use core::{mem::ManuallyDrop, ptr::from_ref};

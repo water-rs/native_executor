@@ -1,28 +1,17 @@
-//! High-precision timer functionality for async operations.
+//! Platform-native timers with high precision.
 //!
-//! This module provides platform-native timer utilities that leverage operating system
-//! scheduling primitives for accurate timing. The timers integrate seamlessly with the
-//! async runtime and provide precise delays without busy-waiting.
+//! Leverages OS scheduling primitives (GCD `dispatch_after` on Apple) for accurate
+//! timing without busy-waiting.
 //!
-//! # Platform Integration
-//! - **Apple platforms**: Uses Grand Central Dispatch's `dispatch_after` for optimal precision
-//! - **Other platforms**: Will use platform-specific high-resolution timer APIs
-//!
-//! # Examples
 //! ```rust
 //! use native_executor::timer::{Timer, sleep};
 //! use std::time::Duration;
 //!
-//! async fn timing_example() {
-//!     // Precise millisecond timing
-//!     Timer::after(Duration::from_millis(100)).await;
-//!     
-//!     // Convenient second-based delays  
-//!     Timer::after_secs(2).await;
-//!     
-//!     // Simple sleep function
-//!     sleep(1).await;
-//! }
+//! # async {
+//! Timer::after(Duration::from_millis(100)).await;  // Precise timing
+//! Timer::after_secs(2).await;                      // Convenience method  
+//! sleep(1).await;                                  // Simple sleep
+//! # };
 //! ```
 
 use core::{
@@ -87,6 +76,7 @@ impl Timer {
     /// # Example
     ///
     /// ```
+    /// use native_executor::timer::Timer;
     /// use std::time::Duration;
     ///
     /// async fn example() {
@@ -118,6 +108,8 @@ impl Timer {
     /// # Example
     ///
     /// ```
+    /// use native_executor::timer::Timer;
+    ///
     /// async fn example() {
     ///     // Wait for 5 seconds
     ///     Timer::after_secs(5).await;

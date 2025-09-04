@@ -5,15 +5,14 @@ extern crate alloc;
 extern crate std;
 
 mod apple;
-mod local_value;
 #[cfg(target_vendor = "apple")]
 use async_task::Task;
 use executor_core::{Executor, LocalExecutor};
-pub use local_value::{LocalValue, OnceValue};
 #[cfg(target_vendor = "apple")]
 mod main_value;
 #[cfg(target_vendor = "apple")]
 pub use main_value::MainValue;
+pub mod mailbox;
 #[cfg(target_vendor = "apple")]
 pub mod timer;
 use core::mem::ManuallyDrop;
@@ -47,8 +46,24 @@ impl Executor for DefaultExecutor {
     }
 }
 
+/// An executor that runs tasks on the main thread.
+///
+/// `MainExecutor` is designed for executing futures that need to run specifically
+/// on the main thread, such as UI updates or main-thread-only API calls.
+/// This executor implements both `Executor` and `LocalExecutor` traits.
 #[cfg(target_vendor = "apple")]
-impl LocalExecutor for DefaultExecutor {
+#[derive(Debug)]
+pub struct MainExecutor;
+
+#[cfg(target_vendor = "apple")]
+impl Executor for MainExecutor {
+    fn spawn<T: 'static>(&self, fut: impl Future<Output = T> + 'static) -> Task<T> {
+        spawn_local(fut)
+    }
+}
+
+#[cfg(target_vendor = "apple")]
+impl LocalExecutor for MainExecutor {
     fn spawn<T: 'static>(&self, fut: impl Future<Output = T> + 'static) -> Task<T> {
         spawn_local(fut)
     }

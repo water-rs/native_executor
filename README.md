@@ -4,19 +4,16 @@
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![docs.rs](https://docs.rs/native-executor/badge.svg)](https://docs.rs/native-executor)
 
-A high-performance, platform-native async task executor for Rust that leverages native event loops for optimal performance and integration.
+Platform-native async task executor that leverages OS event loops (GCD, GDK) for optimal performance.
 
 ## Features
 
-- 🚀 **Native event loop integration**: Leverages platform-native event loops (GCD on Apple, GDK on Linux) for optimal performance
-- 🔄 **Async/await support**: Fully compatible with Rust's async/await syntax and ecosystem
-- 🧵 **Thread-safe tasks**: Safe concurrent execution across thread boundaries with `Task<T>`
-- 🔒 **Thread-local tasks**: Efficient thread-local execution with `LocalTask<T>`
-- 🔝 **Priority control**: Fine-grained task execution priority management
-- ⏱️ **Timer utilities**: High-precision timers and sleep functionality with fluent API
-- 🔐 **Thread-safety utilities**: `LocalValue<T>`, `OnceValue<T>`, and `MainValue<T>` for controlled thread access patterns
-- 📦 **`#[no_std]` compatible**: Works in embedded and resource-constrained environments
-- 🎯 **Zero-cost abstractions**: Minimal overhead over native platform APIs
+- **Platform-native scheduling**: Direct GCD integration on Apple platforms
+- **Priority-aware execution**: Background vs default task prioritization
+- **Thread-local safety**: Non-Send future execution with compile-time guarantees
+- **High-precision timers**: OS-native timing without busy-waiting
+- **Thread-safe utilities**: `LocalValue`, `OnceValue`, `MainValue` containers
+- **Zero-cost abstractions**: Direct OS API usage, no additional runtime
 
 ## Installation
 
@@ -24,7 +21,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-native-executor = "0.1.0"
+native-executor = "0.2.0"
 ```
 
 ## Quick Start
@@ -51,153 +48,63 @@ std::thread::sleep(Duration::from_secs(2));
 
 ### Task Spawning
 
-The library provides flexible task spawning with different execution contexts:
-
 ```rust
-use native_executor::{spawn_local, spawn_with_priority, spawn_main, Priority};
+use native_executor::{spawn, spawn_local, spawn_main, spawn_with_priority, Priority};
 
-// Simple task spawning with default priority
-let task_handle = spawn_local(async {
-    // Your async code here
-    println!("Running on a background thread");
-});
-
-// Task with explicit priority control
-let background_task = spawn_with_priority(async {
-    // Low-priority background work
-    // heavy_computation().await;
-}, Priority::Background);
-
-// Task guaranteed to run on the main thread
-let ui_task = spawn_main(async {
-    // UI updates or main-thread-only operations
-    // update_user_interface().await;
-});
+spawn(async { /* default priority */ });
+spawn_local(async { /* non-Send, main thread */ });
+spawn_main(async { /* Send, main thread */ });
+spawn_with_priority(async { /* background work */ }, Priority::Background);
 ```
 
-### Timer Utilities
-
-High-precision timing with platform-native scheduling:
+### Timers
 
 ```rust
 use native_executor::timer::{Timer, sleep};
 use std::time::Duration;
 
-async fn timing_example() {
-    // Precise timing with platform-native scheduling
-    Timer::after(Duration::from_millis(500)).await;
-
-    // Convenient shorthand for second-based delays
-    Timer::after_secs(1).await;
-
-    // Simple sleep function for quick delays
-    sleep(2).await;
-
-    println!("All timers completed with high precision!");
-}
+# async {
+Timer::after(Duration::from_millis(100)).await;  // Precise timing
+Timer::after_secs(2).await;                      // Convenience method
+sleep(1).await;                                  // Simple sleep
+# };
 ```
 
-### Thread-safety Utilities
-
-Specialized containers for different thread-safety requirements:
-
-#### `LocalValue`
-
-Thread-local values that enforce single-thread access:
+### Thread-Safe Containers
 
 ```rust
-use native_executor::LocalValue;
+use native_executor::{LocalValue, OnceValue, MainValue};
 
+// Thread-local access only
 let local = LocalValue::new(42);
-assert_eq!(*local, 42); // ✅ OK on the same thread
-// ❌ Access from another thread would panic for safety
-```
+assert_eq!(*local, 42);
 
-#### `OnceValue`
+// Single-consumption semantics
+let once = OnceValue::new("consume once");
+let value = once.take();
 
-Values that can be consumed exactly once:
-
-```rust
-use native_executor::OnceValue;
-
-let once = OnceValue::new("take me once");
-assert_eq!(&*once.get(), "take me once"); // ✅ Read access
-let value = once.take(); // ✅ Take ownership
-// ❌ once.get() would now panic - value consumed
-```
-
-#### `MainValue`
-
-Cross-thread safe values with main-thread access:
-
-```rust
-use native_executor::MainValue;
-
-let ui_element = MainValue::new(String::from("Button"));
-
-// Safe cross-thread access - execution happens on main thread
-let length = ui_element.handle(|element| {
-    println!("UI element: {}", element);
-    element.len()
-}).await;
-
-assert_eq!(length, 6);
+// Cross-thread with main-thread execution
+let main_val = MainValue::new(String::from("UI data"));
+# async {
+let len = main_val.handle(|s| s.len()).await;
+# };
 ```
 
 ## Platform Support
 
-### Current Support
+**Current**: Apple platforms (macOS, iOS, tvOS, watchOS) via Grand Central Dispatch\
+**Planned**: Linux (GDK), Windows (IOCP), Android (Looper), WebAssembly
 
-- **Apple Platforms** (macOS, iOS, tvOS, watchOS): Full support via Grand Central Dispatch (GCD)
-  - Leverages system-level thread pools and scheduling
-  - Priority mapping to GCD queue priorities
-  - Optimal performance and system integration
-
-### Native Event Loop Philosophy
-
-This crate is designed to integrate with **platform-native event loops** rather than creating its own threading abstraction:
-
-- **Apple Platforms** (macOS, iOS, tvOS, watchOS): Uses Grand Central Dispatch (GCD)
-
-  - Leverages system-level thread pools and scheduling
-  - Priority mapping to GCD queue priorities
-  - Optimal performance and system integration
-
-- **Linux**: Designed for GDK event loop integration
-  - Tasks would integrate with `GLib`'s main event loop
-  - Requires a GDK/GTK environment
-  - Tasks scheduled through `GLib`'s idle and timeout functions
-
-### Compilation Support
-
-- **Apple Platforms**: Full compilation and runtime support
-- **Documentation builds** (e.g., docs.rs): Stub implementations for documentation generation only
-- **Other platforms**: Compile-time error with clear message about platform requirements
-
-This approach ensures that unsupported platforms fail at compile-time rather than runtime, while still allowing documentation to be generated on docs.rs.
-
-### Future Platform Support
-
-Each platform implementation will leverage native event loops:
-
-- **Windows**: Integration with Windows message loop/completion ports
-- **Android**: Android Looper integration
-- **WebAssembly**: Browser event loop integration
+Unsupported platforms fail at compile-time with clear error messages.
 
 ## Examples
 
-Explore comprehensive usage examples in the [examples directory](examples/):
-
-- **[Simple Task](examples/simple_task.rs)**: Basic task spawning and execution
-- **[Timers](examples/timers.rs)**: Timer utilities and sleep functionality
-- **[Priority Control](examples/priority.rs)**: Task priority management
-- **[Main Thread](examples/main_thread.rs)**: Main thread execution patterns
-- **[Thread-Local Values](examples/local_value.rs)**: Thread-local and once-value containers
-
-Run any example with:
-
 ```bash
-cargo run --example simple_task
+cargo run --example simple_task    # Basic spawning
+cargo run --example priority       # Priority control
+cargo run --example timers         # High-precision timing
+cargo run --example main_thread     # Main thread execution
+cargo run --example local_value     # Thread-safe containers
 ```
 
 ## License

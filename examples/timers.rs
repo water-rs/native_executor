@@ -4,7 +4,6 @@ use native_executor::{
 };
 use std::time::Duration;
 
-#[allow(clippy::uninlined_format_args)]
 fn main() {
     spawn(async {
         println!("Starting timers example");

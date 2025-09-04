@@ -10,6 +10,7 @@ keywords = ["task", "async", "concurrency", "waterui"]
 categories = ["asynchronous", "concurrency"]
 
 [dependencies]
+async-channel = "2.5.0"
 async-task = "4.7.1"
 futures-lite = "2.6"
 spin = "0.10"

@@ -6,7 +6,7 @@ fn main() {
     let main_value = MainValue::new(String::from("Hello from main thread"));
 
     // Spawn a task that accesses the main value
-    let _task = spawn_main(async move {
+    spawn_main(async move {
         // This will be executed on the main thread
         let result = main_value
             .handle(|value| {
@@ -16,7 +16,8 @@ fn main() {
             .await;
 
         println!("Length: {result}");
-    });
+    })
+    .detach();
 
     // Wait for the task to complete
     std::thread::sleep(Duration::from_secs(1));
