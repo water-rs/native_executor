@@ -23,7 +23,7 @@
 #![allow(clippy::non_send_fields_in_send_ty)]
 use core::{mem::ManuallyDrop, ptr::from_ref};
 
-use crate::{Task, exec_main};
+use crate::{Task, exec_main, spawn, spawn_main};
 
 /// A container for values that must be accessed and dropped on the main thread.
 ///
@@ -111,10 +111,10 @@ impl<T: 'static> MainValue<T> {
             let ptr = unsafe { &*(ptr.0) };
 
             let result = f(ptr);
-            return Task::new(async move { result });
+            return spawn(async move { result });
         }
 
-        Task::on_main(async move {
+        spawn_main(async move {
             let _ = MAIN_THREAD_ID.get_or_init(|| std::thread::current().id());
             let ptr = ptr;
             let ptr = unsafe { &*(ptr.0) };

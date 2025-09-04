@@ -1,6 +1,6 @@
 [package]
 name = "native-executor"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["Lexo Liu"]
 license = "MIT"
@@ -11,12 +11,18 @@ categories = ["asynchronous", "concurrency"]
 
 [dependencies]
 async-task = "4.7.1"
-executor-core = { version = "0.1.0", default-features = false }
 futures-lite = "2.6"
 spin = "0.10"
 
+[dependencies.executor-core]
+version = "0.2.0"
+
 [target.'cfg(target_vendor = "apple")'.dependencies]
 dispatch = "0.2.0"
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "docsrs"]
+
 
 [lints]
 rust.missing_debug_implementations = "warn"

@@ -1,4 +1,4 @@
-use native_executor::{MainValue, Task};
+use native_executor::{MainValue, spawn_main};
 use std::time::Duration;
 
 fn main() {
@@ -6,7 +6,7 @@ fn main() {
     let main_value = MainValue::new(String::from("Hello from main thread"));
 
     // Spawn a task that accesses the main value
-    let _task = Task::new(async move {
+    let _task = spawn_main(async move {
         // This will be executed on the main thread
         let result = main_value
             .handle(|value| {

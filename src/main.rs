@@ -4,11 +4,11 @@
 //! demonstrating task spawning and high-precision timing with platform-native
 //! scheduling primitives.
 
-use native_executor::{task, timer::Timer};
+use native_executor::{spawn, timer::Timer};
 use std::time::Duration;
 
 fn main() {
-    task(hello());
+    spawn(hello()).detach();
 }
 
 /// Example async function demonstrating timer usage.

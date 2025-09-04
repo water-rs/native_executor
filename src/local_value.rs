@@ -23,7 +23,7 @@ use std::thread::{ThreadId, current};
 ///
 /// let local = LocalValue::new(42);
 /// assert_eq!(*local, 42); // ✅ OK on same thread
-/// 
+///
 /// // Moving to another thread would allow transfer, but access would panic
 /// // std::thread::spawn(move || *local); // ❌ Would panic at runtime
 /// ```
@@ -124,15 +124,15 @@ unsafe impl<T: Sync> Sync for LocalValue<T> {}
 /// use native_executor::OnceValue;
 ///
 /// let once = OnceValue::new("consume me");
-/// 
+///
 /// // Multiple reads are allowed
 /// assert_eq!(&*once.get(), "consume me");
 /// assert_eq!(&*once.get(), "consume me");
-/// 
+///
 /// // Single consumption
 /// let value = once.take();
 /// assert_eq!(value, "consume me");
-/// 
+///
 /// // Further access would panic
 /// // once.get(); // ❌ Would panic - value consumed
 /// ```

@@ -21,14 +21,14 @@ cargo run --example local_value
 Demonstrates basic task creation and execution with platform-native scheduling:
 
 ```rust
-use native_executor::{task, timer::Timer};
+use native_executor::{spawn_local, timer::Timer};
 use std::time::Duration;
 
 fn main() {
     println!("Starting native executor example");
 
     // Spawn a task with default priority using platform-native scheduling
-    let handle = task(async {
+    let handle = spawn_local(async {
         println!("Task started on background thread");
 
         // High-precision timer using platform scheduling
@@ -52,7 +52,7 @@ fn main() {
 Shows how to safely access main-thread-only values from any thread:
 
 ```rust
-use native_executor::{Task, MainValue};
+use native_executor::{spawn_main, MainValue};
 use std::time::Duration;
 
 fn main() {
@@ -60,7 +60,7 @@ fn main() {
     let ui_element = MainValue::new(String::from("Window Title"));
 
     // Spawn a task that safely accesses the main-thread value
-    let _task = Task::new(async move {
+    let _task = spawn_main(async move {
         // This closure runs on the main thread, even though
         // the task was spawned from a background context
         let length = ui_element.handle(|value| {
@@ -83,12 +83,12 @@ fn main() {
 Demonstrates task priority management for optimal resource allocation:
 
 ```rust
-use native_executor::{Task, Priority, timer::Timer};
+use native_executor::{spawn, spawn_with_priority, Priority, timer::Timer};
 use std::time::Duration;
 
 fn main() {
     // Default priority for time-sensitive operations
-    Task::new(async {
+    spawn(async {
         println!("Default priority task started");
         Timer::after_secs(1).await;
         println!("Default priority task completed");
@@ -96,7 +96,7 @@ fn main() {
 
     // Background priority for non-critical work
     // These tasks yield CPU time to higher-priority tasks
-    Task::with_priority(async {
+    spawn_with_priority(async {
         println!("Background priority task started");
         Timer::after_secs(1).await;
         println!("Background priority task completed");
@@ -120,21 +120,21 @@ use std::time::Duration;
 fn main() {
     // LocalValue enforces single-thread access
     let local = LocalValue::new(42);
-    
+
     // Safe access on the same thread
     println!("Thread-local value: {}", *local);
     println!("Dereferenced: {:?}", local);
 
     // OnceValue allows single consumption
     let once = OnceValue::new("consume me once");
-    
+
     // First access - read the value
     println!("Reading once-value: {}", &*once.get());
-    
+
     // Take ownership - value is consumed
     let consumed = once.take();
     println!("Consumed value: {}", consumed);
-    
+
     // Subsequent access would panic (safely prevented)
     // once.get(); // ❌ Would panic - value already consumed
 
@@ -149,11 +149,11 @@ fn main() {
 Demonstrates platform-native timing capabilities with various APIs:
 
 ```rust
-use native_executor::{task, timer::{Timer, sleep}};
+use native_executor::{spawn, timer::{Timer, sleep}};
 use std::time::Duration;
 
 fn main() {
-    task(async {
+    spawn(async {
         println!("Starting high-precision timers example");
 
         // Precise timing with Duration
@@ -182,7 +182,7 @@ fn main() {
 ## Key Features Demonstrated
 
 - **Platform-native scheduling**: All examples leverage OS primitives for optimal performance
-- **Thread safety**: Examples show safe cross-thread communication patterns  
+- **Thread safety**: Examples show safe cross-thread communication patterns
 - **Priority control**: Background tasks yield to higher-priority operations
 - **Main-thread safety**: UI and thread-local operations remain safe and predictable
 - **High-precision timing**: Platform-native timers provide accurate delays

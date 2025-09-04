@@ -1,11 +1,14 @@
 #![doc = include_str!("../README.md")]
 #![no_std]
+#![warn(missing_docs, missing_debug_implementations)]
 extern crate alloc;
 extern crate std;
 
 mod apple;
 mod local_value;
-use executor_core::Executor;
+#[cfg(target_vendor = "apple")]
+use async_task::Task;
+use executor_core::{Executor, LocalExecutor};
 pub use local_value::{LocalValue, OnceValue};
 #[cfg(target_vendor = "apple")]
 mod main_value;
@@ -20,6 +23,16 @@ pub use futures_lite::*;
 #[cfg(target_vendor = "apple")]
 type DefaultExecutor = apple::ApplePlatformExecutor;
 
+// Only provide stub implementations when building docs (e.g., on docs.rs)
+#[cfg(all(not(target_vendor = "apple"), docsrs))]
+struct DefaultExecutor;
+
+// Compile-time error for unsupported platforms (except when building docs)
+#[cfg(all(not(target_vendor = "apple"), not(docsrs)))]
+compile_error!(
+    "This crate only supports Apple platforms (macOS, iOS, tvOS, watchOS) with Grand Central Dispatch (GCD). Linux support requires GDK event loop integration (not yet implemented)."
+);
+
 trait PlatformExecutor {
     fn exec_main(f: impl FnOnce() + Send + 'static);
     fn exec(f: impl FnOnce() + Send + 'static, priority: Priority);
@@ -29,11 +42,43 @@ trait PlatformExecutor {
 
 #[cfg(target_vendor = "apple")]
 impl Executor for DefaultExecutor {
-    fn spawn<T: Send + 'static>(
-        &self,
-        fut: impl Future<Output = T> + Send + 'static,
-    ) -> impl executor_core::Task<Output = T> {
-        Task::new(fut)
+    fn spawn<T: Send + 'static>(&self, fut: impl Future<Output = T> + Send + 'static) -> Task<T> {
+        spawn(fut)
+    }
+}
+
+#[cfg(target_vendor = "apple")]
+impl LocalExecutor for DefaultExecutor {
+    fn spawn<T: 'static>(&self, fut: impl Future<Output = T> + 'static) -> Task<T> {
+        spawn_local(fut)
+    }
+}
+
+// Stub implementation only for documentation builds
+#[cfg(all(not(target_vendor = "apple"), docsrs))]
+impl PlatformExecutor for DefaultExecutor {
+    fn exec_main(_f: impl FnOnce() + Send + 'static) {
+        // Documentation-only stub - not available at runtime
+        unimplemented!("This function is only available for documentation generation")
+    }
+
+    fn exec(_f: impl FnOnce() + Send + 'static, _priority: Priority) {
+        // Documentation-only stub - not available at runtime
+        unimplemented!("This function is only available for documentation generation")
+    }
+
+    fn exec_after(_delay: Duration, _f: impl FnOnce() + Send + 'static) {
+        // Documentation-only stub - not available at runtime
+        unimplemented!("This function is only available for documentation generation")
+    }
+}
+
+// Stub implementation only for documentation builds
+#[cfg(all(not(target_vendor = "apple"), docsrs))]
+impl Executor for DefaultExecutor {
+    fn spawn<T: Send + 'static>(&self, fut: impl Future<Output = T> + Send + 'static) -> Task<T> {
+        let (runnable, task) = async_task::spawn(fut, |_| {});
+        task
     }
 }
 
@@ -59,172 +104,156 @@ pub enum Priority {
     Background,
 }
 
-/// A handle to a spawned asynchronous task that can be shared between threads.
+/// Creates a new task with the specified execution priority.
 ///
-/// `Task<T>` represents a future that will complete with the output of the spawned task.
-/// Tasks are automatically scheduled for execution using platform-native primitives
-/// and can be awaited to retrieve their results.
+/// This allows fine-grained control over task scheduling, enabling
+/// background tasks to yield to higher-priority operations.
 ///
-/// # Thread Safety
+/// # Arguments
+/// * `future` - The future to execute asynchronously
+/// * `priority` - The scheduling priority for this task
 ///
-/// Tasks are `Send` and `Sync`, allowing them to be moved between threads and
-/// shared safely. The underlying execution is handled by the platform's scheduler.
+/// # Returns
+/// A `Task` handle that can be awaited to retrieve the result
 ///
 /// # Examples
-///
 /// ```rust
-/// use native_executor::{Task, Priority};
+/// use native_executor::{spawn_with_priority, Priority};
 ///
-/// // Spawn a task with default priority
-/// let task = Task::new(async { 42 });
+/// // High-priority task for time-sensitive operations
+/// let urgent = spawn_with_priority(async {
+///     // Your time-sensitive work here
+///     42
+/// }, Priority::Default);
 ///
-/// // Spawn a background task
-/// let bg_task = Task::with_priority(async { "background" }, Priority::Background);
+/// // Background task that won't interfere with UI responsiveness
+/// let cleanup = spawn_with_priority(async {
+///     // Your background work here
+///     "done"
+/// }, Priority::Background);
 /// ```
-#[derive(Debug)]
-pub struct Task<T: 'static + Send> {
-    inner: ManuallyDrop<async_task::Task<T>>,
-}
-
-impl<T: Send> executor_core::Task for Task<T> {
-    async fn result(self) -> Result<Self::Output, executor_core::Error> {
-        Ok(self.await)
-    }
-
-    fn cancel(self) {
-        drop(ManuallyDrop::into_inner(self.inner));
-    }
-}
-
-impl<T: 'static + Send> Task<T> {
-    /// Creates a new task with default priority.
-    ///
-    /// The task is immediately scheduled for execution using the platform's
-    /// default priority level, which provides balanced performance for most use cases.
-    ///
-    /// # Arguments
-    /// * `future` - The future to execute asynchronously
-    ///
-    /// # Returns
-    /// A `Task` handle that can be awaited to retrieve the result
-    ///
-    /// # Examples
-    /// ```rust
-    /// use native_executor::Task;
-    ///
-    /// let task = Task::new(async { 42 + 58 });
-    /// // let result = task.await; // Returns 100
-    /// ```
-    pub fn new<Fut>(future: Fut) -> Self
-    where
-        Fut: Future<Output = T> + Send + 'static,
-    {
-        Self::with_priority(future, Priority::default())
-    }
-
-    /// Creates a new task with the specified execution priority.
-    ///
-    /// This allows fine-grained control over task scheduling, enabling
-    /// background tasks to yield to higher-priority operations.
-    ///
-    /// # Arguments
-    /// * `future` - The future to execute asynchronously
-    /// * `priority` - The scheduling priority for this task
-    ///
-    /// # Returns
-    /// A `Task` handle that can be awaited to retrieve the result
-    ///
-    /// # Examples
-    /// ```rust
-    /// use native_executor::{Task, Priority};
-    ///
-    /// // High-priority task for time-sensitive operations
-    /// let urgent = Task::with_priority(async {
-    ///     process_user_input().await
-    /// }, Priority::Default);
-    ///
-    /// // Background task that won't interfere with UI responsiveness
-    /// let cleanup = Task::with_priority(async {
-    ///     clean_temporary_files().await
-    /// }, Priority::Background);
-    /// ```
-    pub fn with_priority<Fut>(future: Fut, priority: Priority) -> Self
-    where
-        Fut: Future<Output = T> + Send + 'static,
-    {
-        let (runnable, task) = async_task::spawn(future, move |runnable: Runnable| {
-            exec(
-                move || {
-                    runnable.run();
-                },
-                priority,
-            );
-        });
-
+pub fn spawn_with_priority<Fut>(future: Fut, priority: Priority) -> Task<Fut::Output>
+where
+    Fut: Future + Send + 'static,
+    Fut::Output: Send,
+{
+    let (runnable, task) = async_task::spawn(future, move |runnable: Runnable| {
         exec(
             move || {
                 runnable.run();
             },
             priority,
         );
-        Self {
-            inner: ManuallyDrop::new(task),
-        }
-    }
+    });
 
-    /// Schedules a task to run exclusively on the main thread.
-    ///
-    /// This is essential for operations that must execute on the main thread,
-    /// such as UI updates, main-thread-only API calls, or accessing thread-local
-    /// resources that are bound to the main thread.
-    ///
-    /// # Arguments
-    /// * `future` - The future to execute on the main thread
-    ///
-    /// # Returns
-    /// A `Task` handle that can be awaited to retrieve the result
-    ///
-    /// # Platform Behavior
-    /// - **Apple platforms**: Uses GCD's main queue for execution
-    /// - **Other platforms**: Will be implemented with platform-specific main thread scheduling
-    ///
-    /// # Examples
-    /// ```rust
-    /// use native_executor::Task;
-    ///
-    /// // UI update that must happen on the main thread
-    /// let ui_task = Task::on_main(async {
-    ///     update_window_title("Processing...").await;
-    ///     "UI updated"
-    /// });
-    /// ```
-    pub fn on_main<Fut>(future: Fut) -> Self
-    where
-        Fut: Future<Output = T> + Send + 'static,
-    {
-        let (runnable, task) = async_task::spawn(future, move |runnable: Runnable| {
-            exec_main(move || {
-                runnable.run();
-            });
-        });
+    runnable.schedule();
+    task
+}
 
+/// Creates a new thread-local task that runs on the current thread.
+///
+/// This function is designed for futures that are not `Send` and must execute
+/// on the same thread where they were created. The task will be scheduled to
+/// run on the main thread using platform-native scheduling.
+///
+/// # Arguments
+/// * `future` - The non-Send future to execute on the current thread
+///
+/// # Returns
+/// A `Task` handle that can be awaited to retrieve the result
+///
+/// # Panics
+/// This function may panic if called from a thread other than the main thread,
+/// depending on the platform implementation.
+///
+/// # Examples
+/// ```rust
+/// use native_executor::spawn_local;
+/// use std::rc::Rc;
+///
+/// // Rc is not Send, so we need spawn_local
+/// let local_data = Rc::new(42);
+/// let task = spawn_local(async move {
+///     *local_data + 58
+/// });
+/// ```
+pub fn spawn_local<Fut>(future: Fut) -> Task<Fut::Output>
+where
+    Fut: Future + 'static,
+{
+    let (runnable, task) = async_task::spawn_local(future, move |runnable: Runnable| {
         exec_main(move || {
             runnable.run();
         });
-        Self {
-            inner: ManuallyDrop::new(task),
-        }
-    }
+    });
+
+    runnable.schedule();
+    task
 }
 
-impl<T: Send> Future for Task<T> {
-    type Output = T;
-    fn poll(
-        mut self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Self::Output> {
-        self.inner.poll(cx)
-    }
+/// Creates a new task with default priority.
+///
+/// This is the primary function for spawning async tasks. The task will be
+/// executed with default priority using platform-native scheduling.
+///
+/// # Arguments
+/// * `future` - The future to execute asynchronously
+///
+/// # Returns
+/// A `Task` handle that can be awaited to retrieve the result
+///
+/// # Examples
+/// ```rust
+/// use native_executor::spawn;
+///
+/// let task = spawn(async {
+///     // Your async work here
+///     42
+/// });
+/// ```
+pub fn spawn<Fut>(future: Fut) -> Task<Fut::Output>
+where
+    Fut: Future + Send + 'static,
+    Fut::Output: Send,
+{
+    spawn_with_priority(future, Priority::default())
+}
+
+/// Creates a new task that executes on the main thread.
+///
+/// This function schedules a `Send` future to run specifically on the main thread.
+/// This is useful for operations that must happen on the main thread, such as
+/// UI updates or accessing main-thread-only APIs.
+///
+/// # Arguments
+/// * `future` - The Send future to execute on the main thread
+///
+/// # Returns
+/// A `Task` handle that can be awaited to retrieve the result
+///
+/// # Examples
+/// ```rust
+/// use native_executor::spawn_main;
+///
+/// let task = spawn_main(async {
+///     // This runs on the main thread
+///     println!("Running on main thread");
+///     "done"
+/// });
+/// ```
+pub fn spawn_main<Fut>(future: Fut) -> Task<Fut::Output>
+where
+    Fut: Future + Send + 'static,
+    Fut::Output: Send,
+{
+    let (runnable, task) = async_task::spawn(future, move |runnable: Runnable| {
+        exec_main(move || {
+            runnable.run();
+        });
+    });
+
+    runnable.schedule();
+    task
 }
 
 /// A handle to a thread-local asynchronous task.
@@ -291,9 +320,7 @@ impl<T: 'static> LocalTask<T> {
             });
         });
 
-        exec_main(move || {
-            runnable.run();
-        });
+        runnable.schedule();
         Self {
             inner: ManuallyDrop::new(task),
         }
@@ -318,42 +345,16 @@ impl<T> Future for LocalTask<T> {
     }
 }
 
-/// Convenience function to spawn a new task with default priority.
-///
-/// This is the most common way to spawn tasks, providing a simple interface
-/// for creating and scheduling asynchronous work with optimal platform integration.
-///
-/// # Arguments
-/// * `fut` - The future to execute asynchronously
-///
-/// # Returns
-/// A `Task` handle that can be awaited to retrieve the result
-///
-/// # Examples
-/// ```rust
-/// use native_executor::task;
-///
-/// // Spawn a simple task
-/// let handle = task(async {
-///     expensive_computation().await
-/// });
-///
-/// // Wait for completion
-/// let result = handle.await;
-/// ```
-pub fn task<Fut>(fut: Fut) -> Task<Fut::Output>
-where
-    Fut: Future + Send + 'static,
-    Fut::Output: Send,
-{
-    Task::new(fut)
-}
-
 /// Schedules a function to be executed on the main thread.
 ///
 /// # Parameters
 /// * `f` - The function to execute on the main thread
 #[cfg(target_vendor = "apple")]
+fn exec_main(f: impl FnOnce() + Send + 'static) {
+    DefaultExecutor::exec_main(f);
+}
+
+#[cfg(all(not(target_vendor = "apple"), docsrs))]
 fn exec_main(f: impl FnOnce() + Send + 'static) {
     DefaultExecutor::exec_main(f);
 }
@@ -368,12 +369,22 @@ fn exec(f: impl FnOnce() + Send + 'static, priority: Priority) {
     DefaultExecutor::exec(f, priority);
 }
 
+#[cfg(all(not(target_vendor = "apple"), docsrs))]
+fn exec(f: impl FnOnce() + Send + 'static, priority: Priority) {
+    DefaultExecutor::exec(f, priority);
+}
+
 /// Schedules a function to be executed after a specified delay.
 ///
 /// # Parameters
 /// * `delay` - The duration to wait before executing the function
 /// * `f` - The function to execute after the delay
 #[cfg(target_vendor = "apple")]
+fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static) {
+    DefaultExecutor::exec_after(delay, f);
+}
+
+#[cfg(all(not(target_vendor = "apple"), docsrs))]
 fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static) {
     DefaultExecutor::exec_after(delay, f);
 }
