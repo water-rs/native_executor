@@ -4,11 +4,11 @@
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![docs.rs](https://docs.rs/native-executor/badge.svg)](https://docs.rs/native-executor)
 
-Platform-native async task executor that leverages OS event loops (GCD, GDK) for optimal performance.
+Platform-native async task executor that leverages OS thread pools and event loops for optimal performance.
 
 ## Features
 
-- **Platform-native scheduling**: Direct GCD integration on Apple platforms
+- **Platform-native scheduling**: Direct GCD integration on Apple platforms, Windows Thread Pool API on Windows
 - **Priority-aware execution**: Background vs default task prioritization
 - **Thread-local safety**: Non-Send future execution with compile-time guarantees
 - **High-precision timers**: OS-native timing without busy-waiting
@@ -92,8 +92,11 @@ let len = main_val.handle(|s| s.len()).await;
 
 ## Platform Support
 
-**Current**: Apple platforms (macOS, iOS, tvOS, watchOS) via Grand Central Dispatch\
-**Planned**: Linux (GDK), Windows (IOCP), Android (Looper), WebAssembly
+**Current**: 
+- Apple platforms (macOS, iOS, tvOS, watchOS) via Grand Central Dispatch
+- Windows via Windows Thread Pool API
+
+**Planned**: Linux (GDK), Android (Looper), WebAssembly
 
 Unsupported platforms fail at compile-time with clear error messages.
 

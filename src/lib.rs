@@ -5,7 +5,9 @@ extern crate alloc;
 extern crate std;
 
 mod apple;
-#[cfg(target_vendor = "apple")]
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(any(target_vendor = "apple", target_os = "windows"))]
 use async_task::Task;
 use executor_core::{Executor, LocalExecutor};
 #[cfg(target_vendor = "apple")]
@@ -22,14 +24,17 @@ pub use futures_lite::*;
 #[cfg(target_vendor = "apple")]
 type DefaultExecutor = apple::ApplePlatformExecutor;
 
+#[cfg(target_os = "windows")]
+type DefaultExecutor = windows::WindowsPlatformExecutor;
+
 // Only provide stub implementations when building docs (e.g., on docs.rs)
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
+#[cfg(all(not(target_vendor = "apple"), not(target_os = "windows"), docsrs))]
 struct DefaultExecutor;
 
 // Compile-time error for unsupported platforms (except when building docs)
-#[cfg(all(not(target_vendor = "apple"), not(docsrs)))]
+#[cfg(all(not(target_vendor = "apple"), not(target_os = "windows"), not(docsrs)))]
 compile_error!(
-    "This crate only supports Apple platforms (macOS, iOS, tvOS, watchOS) with Grand Central Dispatch (GCD). Linux support requires GDK event loop integration (not yet implemented)."
+    "This crate currently supports Apple platforms (macOS, iOS, tvOS, watchOS) with Grand Central Dispatch (GCD) and Windows platforms with the Windows Thread Pool API. Linux support requires event loop integration (not yet implemented)."
 );
 
 trait PlatformExecutor {
@@ -39,7 +44,7 @@ trait PlatformExecutor {
     fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static);
 }
 
-#[cfg(target_vendor = "apple")]
+#[cfg(any(target_vendor = "apple", target_os = "windows"))]
 impl Executor for DefaultExecutor {
     fn spawn<T: Send + 'static>(&self, fut: impl Future<Output = T> + Send + 'static) -> Task<T> {
         spawn(fut)
@@ -51,18 +56,18 @@ impl Executor for DefaultExecutor {
 /// `MainExecutor` is designed for executing futures that need to run specifically
 /// on the main thread, such as UI updates or main-thread-only API calls.
 /// This executor implements both `Executor` and `LocalExecutor` traits.
-#[cfg(target_vendor = "apple")]
+#[cfg(any(target_vendor = "apple", target_os = "windows"))]
 #[derive(Debug)]
 pub struct MainExecutor;
 
-#[cfg(target_vendor = "apple")]
+#[cfg(any(target_vendor = "apple", target_os = "windows"))]
 impl Executor for MainExecutor {
     fn spawn<T: 'static>(&self, fut: impl Future<Output = T> + 'static) -> Task<T> {
         spawn_local(fut)
     }
 }
 
-#[cfg(target_vendor = "apple")]
+#[cfg(any(target_vendor = "apple", target_os = "windows"))]
 impl LocalExecutor for MainExecutor {
     fn spawn<T: 'static>(&self, fut: impl Future<Output = T> + 'static) -> Task<T> {
         spawn_local(fut)
@@ -70,7 +75,7 @@ impl LocalExecutor for MainExecutor {
 }
 
 // Stub implementation only for documentation builds
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
+#[cfg(all(not(target_vendor = "apple"), not(target_os = "windows"), docsrs))]
 impl PlatformExecutor for DefaultExecutor {
     fn exec_main(_f: impl FnOnce() + Send + 'static) {
         // Documentation-only stub - not available at runtime
@@ -89,7 +94,7 @@ impl PlatformExecutor for DefaultExecutor {
 }
 
 // Stub implementation only for documentation builds
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
+#[cfg(all(not(target_vendor = "apple"), not(target_os = "windows"), docsrs))]
 impl Executor for DefaultExecutor {
     fn spawn<T: Send + 'static>(&self, fut: impl Future<Output = T> + Send + 'static) -> Task<T> {
         let (runnable, task) = async_task::spawn(fut, |_| {});
@@ -364,12 +369,12 @@ impl<T> Future for LocalTask<T> {
 ///
 /// # Parameters
 /// * `f` - The function to execute on the main thread
-#[cfg(target_vendor = "apple")]
+#[cfg(any(target_vendor = "apple", target_os = "windows"))]
 fn exec_main(f: impl FnOnce() + Send + 'static) {
     DefaultExecutor::exec_main(f);
 }
 
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
+#[cfg(all(not(target_vendor = "apple"), not(target_os = "windows"), docsrs))]
 fn exec_main(f: impl FnOnce() + Send + 'static) {
     DefaultExecutor::exec_main(f);
 }
@@ -379,12 +384,12 @@ fn exec_main(f: impl FnOnce() + Send + 'static) {
 /// # Parameters
 /// * `f` - The function to execute
 /// * `priority` - The execution priority for the function
-#[cfg(target_vendor = "apple")]
+#[cfg(any(target_vendor = "apple", target_os = "windows"))]
 fn exec(f: impl FnOnce() + Send + 'static, priority: Priority) {
     DefaultExecutor::exec(f, priority);
 }
 
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
+#[cfg(all(not(target_vendor = "apple"), not(target_os = "windows"), docsrs))]
 fn exec(f: impl FnOnce() + Send + 'static, priority: Priority) {
     DefaultExecutor::exec(f, priority);
 }
@@ -394,12 +399,12 @@ fn exec(f: impl FnOnce() + Send + 'static, priority: Priority) {
 /// # Parameters
 /// * `delay` - The duration to wait before executing the function
 /// * `f` - The function to execute after the delay
-#[cfg(target_vendor = "apple")]
+#[cfg(any(target_vendor = "apple", target_os = "windows"))]
 fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static) {
     DefaultExecutor::exec_after(delay, f);
 }
 
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
+#[cfg(all(not(target_vendor = "apple"), not(target_os = "windows"), docsrs))]
 fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static) {
     DefaultExecutor::exec_after(delay, f);
 }
