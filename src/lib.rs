@@ -64,7 +64,7 @@ impl Executor for MainExecutor {
 
 #[cfg(target_vendor = "apple")]
 impl LocalExecutor for MainExecutor {
-    fn spawn<T: 'static>(&self, fut: impl Future<Output = T> + 'static) -> Task<T> {
+    fn spawn_local<T: 'static>(&self, fut: impl Future<Output = T> + 'static) -> Task<T> {
         spawn_local(fut)
     }
 }

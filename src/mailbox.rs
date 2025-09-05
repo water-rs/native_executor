@@ -90,7 +90,7 @@ impl<T: Send + 'static> Mailbox<T> {
         let (sender, receiver) = unbounded::<Box<dyn Send + FnOnce(&T)>>();
 
         executor
-            .spawn(async move {
+            .spawn_local(async move {
                 while let Ok(update) = receiver.recv().await {
                     update(&value);
                 }
