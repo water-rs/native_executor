@@ -66,7 +66,7 @@ pub struct Mailbox<T: 'static> {
     sender: Sender<Job<T>>,
 }
 
-impl<T: Send + 'static> Mailbox<T> {
+impl<T: 'static> Mailbox<T> {
     /// Creates a new mailbox with the given value on the specified executor.
     ///
     /// The value will be moved to a background task that processes incoming
