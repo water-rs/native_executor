@@ -52,7 +52,7 @@ impl Executor for DefaultExecutor {
 /// on the main thread, such as UI updates or main-thread-only API calls.
 /// This executor implements both `Executor` and `LocalExecutor` traits.
 #[cfg(target_vendor = "apple")]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct MainExecutor;
 
 #[cfg(target_vendor = "apple")]

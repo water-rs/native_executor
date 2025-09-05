@@ -21,6 +21,7 @@ impl From<Priority> for QueuePriority {
 ///
 /// This executor provides optimal performance on Apple platforms by directly
 /// leveraging GCD's system-level thread pools and scheduling primitives.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ApplePlatformExecutor;
 
 impl PlatformExecutor for ApplePlatformExecutor {
