@@ -11,12 +11,9 @@ compile_error!("native_executor currently only supports Apple platforms, more to
 
 use async_task::Task;
 use executor_core::{Executor, LocalExecutor};
-mod main_value;
-pub use main_value::MainValue;
 pub mod mailbox;
 pub mod timer;
 use core::time::Duration;
-pub use futures_lite::*;
 
 #[cfg(target_vendor = "apple")]
 pub use apple::ApplePlatformExecutor as NativeExecutor;
