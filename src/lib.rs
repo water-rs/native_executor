@@ -2,35 +2,49 @@
 #![no_std]
 #![warn(missing_docs, missing_debug_implementations)]
 extern crate alloc;
-extern crate std;
 
-mod apple;
 #[cfg(target_vendor = "apple")]
+mod apple;
+
+#[cfg(all(not(target_vendor = "apple"), not(docsrs)))]
+compile_error!("native_executor currently only supports Apple platforms, more to come soon!");
+
 use async_task::Task;
 use executor_core::{Executor, LocalExecutor};
-#[cfg(target_vendor = "apple")]
 mod main_value;
-#[cfg(target_vendor = "apple")]
 pub use main_value::MainValue;
 pub mod mailbox;
-#[cfg(target_vendor = "apple")]
 pub mod timer;
-use core::mem::ManuallyDrop;
 use core::time::Duration;
 pub use futures_lite::*;
 
 #[cfg(target_vendor = "apple")]
-type DefaultExecutor = apple::ApplePlatformExecutor;
+pub use apple::ApplePlatformExecutor as NativeExecutor;
 
-// Only provide stub implementations when building docs (e.g., on docs.rs)
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
-struct DefaultExecutor;
+mod unsupported {
+    use core::time::Duration;
 
-// Compile-time error for unsupported platforms (except when building docs)
-#[cfg(all(not(target_vendor = "apple"), not(docsrs)))]
-compile_error!(
-    "This crate only supports Apple platforms (macOS, iOS, tvOS, watchOS) with Grand Central Dispatch (GCD). Linux support requires GDK event loop integration (not yet implemented)."
-);
+    use crate::{PlatformExecutor, Priority};
+
+    #[allow(unused)]
+    pub struct UnsupportedExecutor;
+    impl PlatformExecutor for UnsupportedExecutor {
+        fn exec_main(_f: impl FnOnce() + Send + 'static) {
+            panic!("exec_main is not supported on this platform");
+        }
+
+        fn exec(_f: impl FnOnce() + Send + 'static, _priority: Priority) {
+            panic!("exec is not supported on this platform");
+        }
+
+        fn exec_after(_delay: Duration, _f: impl FnOnce() + Send + 'static) {
+            panic!("exec_after is not supported on this platform");
+        }
+    }
+}
+
+#[cfg(not(target_vendor = "apple"))]
+pub use unsupported::UnsupportedExecutor as NativeExecutor;
 
 trait PlatformExecutor {
     fn exec_main(f: impl FnOnce() + Send + 'static);
@@ -39,31 +53,13 @@ trait PlatformExecutor {
     fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static);
 }
 
-#[cfg(target_vendor = "apple")]
-impl Executor for DefaultExecutor {
+impl Executor for NativeExecutor {
     fn spawn<T: Send + 'static>(&self, fut: impl Future<Output = T> + Send + 'static) -> Task<T> {
         spawn(fut)
     }
 }
 
-/// An executor that runs tasks on the main thread.
-///
-/// `MainExecutor` is designed for executing futures that need to run specifically
-/// on the main thread, such as UI updates or main-thread-only API calls.
-/// This executor implements both `Executor` and `LocalExecutor` traits.
-#[cfg(target_vendor = "apple")]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct MainExecutor;
-
-#[cfg(target_vendor = "apple")]
-impl Executor for MainExecutor {
-    fn spawn<T: 'static>(&self, fut: impl Future<Output = T> + 'static) -> Task<T> {
-        spawn_local(fut)
-    }
-}
-
-#[cfg(target_vendor = "apple")]
-impl LocalExecutor for MainExecutor {
+impl LocalExecutor for NativeExecutor {
     fn spawn_local<T: 'static>(&self, fut: impl Future<Output = T> + 'static) -> Task<T> {
         spawn_local(fut)
     }
@@ -153,7 +149,7 @@ where
     Fut::Output: Send,
 {
     let (runnable, task) = async_task::spawn(future, move |runnable: Runnable| {
-        exec(
+        NativeExecutor::exec(
             move || {
                 runnable.run();
             },
@@ -165,21 +161,19 @@ where
     task
 }
 
-/// Creates a new thread-local task that runs on the current thread.
+/// Creates a new thread-local task that runs on the main thread.
 ///
 /// This function is designed for futures that are not `Send` and must execute
-/// on the same thread where they were created. The task will be scheduled to
-/// run on the main thread using platform-native scheduling.
+/// on the main thread.
 ///
 /// # Arguments
-/// * `future` - The non-Send future to execute on the current thread
+/// * `future` - The non-Send future to execute on the main thread
 ///
 /// # Returns
 /// A `Task` handle that can be awaited to retrieve the result
 ///
 /// # Panics
-/// This function may panic if called from a thread other than the main thread,
-/// depending on the platform implementation.
+/// This function may panic if not called from a main thread
 ///
 /// # Examples
 /// ```rust
@@ -197,7 +191,7 @@ where
     Fut: Future + 'static,
 {
     let (runnable, task) = async_task::spawn_local(future, move |runnable: Runnable| {
-        exec_main(move || {
+        NativeExecutor::exec_main(move || {
             runnable.run();
         });
     });
@@ -262,144 +256,11 @@ where
     Fut::Output: Send,
 {
     let (runnable, task) = async_task::spawn(future, move |runnable: Runnable| {
-        exec_main(move || {
+        NativeExecutor::exec_main(move || {
             runnable.run();
         });
     });
 
     runnable.schedule();
     task
-}
-
-/// A handle to a thread-local asynchronous task.
-///
-/// `LocalTask<T>` is designed for futures that are not `Send` and must execute
-/// on the same thread where they were created. This is useful for working with
-/// thread-local storage, non-thread-safe types, or platform APIs that require
-/// specific thread contexts.
-///
-/// Unlike `Task<T>`, `LocalTask<T>` does not implement `Send` or `Sync`,
-/// ensuring compile-time safety for thread-local operations.
-///
-/// # Examples
-/// ```rust
-/// use native_executor::LocalTask;
-/// use std::rc::Rc;
-///
-/// // Rc is not Send, so we need LocalTask
-/// let local_data = Rc::new(42);
-/// let task = LocalTask::on_main(async move {
-///     *local_data + 58
-/// });
-/// ```
-#[derive(Debug)]
-pub struct LocalTask<T> {
-    inner: ManuallyDrop<async_task::Task<T>>,
-}
-
-impl<T: 'static> LocalTask<T> {
-    /// Schedules a thread-local task to run on the main thread.
-    ///
-    /// This method is specifically designed for futures that are not `Send`,
-    /// allowing them to be executed safely on the main thread while maintaining
-    /// thread-local guarantees.
-    ///
-    /// # Arguments
-    /// * `future` - The non-Send future to execute on the main thread
-    ///
-    /// # Returns
-    /// A `LocalTask` handle that can be awaited to retrieve the result
-    ///
-    /// # Safety
-    /// The future will only be polled on the main thread, ensuring that
-    /// thread-local data and non-Send types remain safe to use.
-    ///
-    /// # Examples
-    /// ```rust
-    /// use native_executor::LocalTask;
-    /// use std::rc::Rc;
-    ///
-    /// let shared_data = Rc::new("thread-local data");
-    /// let task = LocalTask::on_main(async move {
-    ///     println!("Data: {}", shared_data);
-    ///     shared_data.len()
-    /// });
-    /// ```
-    pub fn on_main<Fut>(future: Fut) -> Self
-    where
-        Fut: Future<Output = T> + 'static,
-    {
-        let (runnable, task) = async_task::spawn_local(future, move |runnable: Runnable| {
-            exec_main(move || {
-                runnable.run();
-            });
-        });
-
-        runnable.schedule();
-        Self {
-            inner: ManuallyDrop::new(task),
-        }
-    }
-
-    /// Cancels the local task and waits for it to stop.
-    ///
-    /// # Returns
-    /// A future that resolves when the task has been cancelled
-    pub async fn cancel(self) {
-        ManuallyDrop::into_inner(self.inner).cancel().await;
-    }
-}
-
-impl<T> Future for LocalTask<T> {
-    type Output = T;
-    fn poll(
-        mut self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Self::Output> {
-        self.inner.poll(cx)
-    }
-}
-
-/// Schedules a function to be executed on the main thread.
-///
-/// # Parameters
-/// * `f` - The function to execute on the main thread
-#[cfg(target_vendor = "apple")]
-fn exec_main(f: impl FnOnce() + Send + 'static) {
-    DefaultExecutor::exec_main(f);
-}
-
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
-fn exec_main(f: impl FnOnce() + Send + 'static) {
-    DefaultExecutor::exec_main(f);
-}
-
-/// Schedules a function to be executed with the specified priority.
-///
-/// # Parameters
-/// * `f` - The function to execute
-/// * `priority` - The execution priority for the function
-#[cfg(target_vendor = "apple")]
-fn exec(f: impl FnOnce() + Send + 'static, priority: Priority) {
-    DefaultExecutor::exec(f, priority);
-}
-
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
-fn exec(f: impl FnOnce() + Send + 'static, priority: Priority) {
-    DefaultExecutor::exec(f, priority);
-}
-
-/// Schedules a function to be executed after a specified delay.
-///
-/// # Parameters
-/// * `delay` - The duration to wait before executing the function
-/// * `f` - The function to execute after the delay
-#[cfg(target_vendor = "apple")]
-fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static) {
-    DefaultExecutor::exec_after(delay, f);
-}
-
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
-fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static) {
-    DefaultExecutor::exec_after(delay, f);
 }

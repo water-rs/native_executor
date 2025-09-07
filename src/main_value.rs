@@ -14,7 +14,9 @@
 #![allow(clippy::non_send_fields_in_send_ty)]
 use core::{mem::ManuallyDrop, ptr::from_ref};
 
-use crate::{Task, exec_main, spawn, spawn_main};
+extern crate std;
+
+use crate::{NativeExecutor, PlatformExecutor, Task, spawn, spawn_main};
 
 /// A container for values that must be accessed and dropped on the main thread.
 ///
@@ -44,7 +46,7 @@ impl<T> Drop for MainValue<T> {
     /// the wrapped value itself is always dropped on the main thread.
     fn drop(&mut self) {
         let this = unsafe { Wrapper(ManuallyDrop::take(&mut self.0)) };
-        exec_main(move || {
+        NativeExecutor::exec_main(move || {
             let _ = this.0;
         });
     }

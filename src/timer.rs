@@ -24,7 +24,7 @@ use core::{
 
 use alloc::sync::Arc;
 
-use crate::exec_after;
+use crate::{NativeExecutor, PlatformExecutor};
 
 /// A high-precision future that completes after a specified duration.
 ///
@@ -137,7 +137,7 @@ impl Future for Timer {
             let finished = self.finished.clone();
 
             // Schedule the callback to run after the specified duration
-            exec_after(duration, move || {
+            NativeExecutor::exec_after(duration, move || {
                 // Mark the timer as finished
                 finished.store(true, Ordering::Release);
                 // Wake the task that's waiting on this timer

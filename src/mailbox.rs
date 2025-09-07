@@ -38,7 +38,7 @@ use alloc::boxed::Box;
 use async_channel::{Sender, unbounded};
 use executor_core::LocalExecutor;
 
-use crate::MainExecutor;
+use crate::NativeExecutor;
 
 type Job<T> = Box<dyn Send + FnOnce(&T)>;
 
@@ -117,7 +117,7 @@ impl<T: 'static> Mailbox<T> {
     /// let mailbox = Mailbox::main(HashMap::<String, i32>::new());
     /// ```
     pub fn main(value: T) -> Self {
-        Self::new(MainExecutor, value)
+        Self::new(NativeExecutor, value)
     }
 
     /// Sends a non-blocking update to the mailbox value.
