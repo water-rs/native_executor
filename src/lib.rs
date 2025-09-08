@@ -24,6 +24,7 @@ mod unsupported {
     use crate::{PlatformExecutor, Priority};
 
     #[allow(unused)]
+    /// A stub executor for unsupported platforms that panics on use.
     pub struct UnsupportedExecutor;
     impl PlatformExecutor for UnsupportedExecutor {
         fn exec_main(_f: impl FnOnce() + Send + 'static) {
@@ -41,6 +42,7 @@ mod unsupported {
 }
 
 #[cfg(not(target_vendor = "apple"))]
+/// The native executor implementation.
 pub use unsupported::UnsupportedExecutor as NativeExecutor;
 
 trait PlatformExecutor {
@@ -62,34 +64,6 @@ impl LocalExecutor for NativeExecutor {
     }
 }
 
-// Stub implementation only for documentation builds
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
-impl PlatformExecutor for DefaultExecutor {
-    fn exec_main(_f: impl FnOnce() + Send + 'static) {
-        // Documentation-only stub - not available at runtime
-        unimplemented!("This function is only available for documentation generation")
-    }
-
-    fn exec(_f: impl FnOnce() + Send + 'static, _priority: Priority) {
-        // Documentation-only stub - not available at runtime
-        unimplemented!("This function is only available for documentation generation")
-    }
-
-    fn exec_after(_delay: Duration, _f: impl FnOnce() + Send + 'static) {
-        // Documentation-only stub - not available at runtime
-        unimplemented!("This function is only available for documentation generation")
-    }
-}
-
-// Stub implementation only for documentation builds
-#[cfg(all(not(target_vendor = "apple"), docsrs))]
-impl Executor for DefaultExecutor {
-    fn spawn<T: Send + 'static>(&self, fut: impl Future<Output = T> + Send + 'static) -> Task<T> {
-        let (runnable, task) = async_task::spawn(fut, |_| {});
-        task
-    }
-}
-
 use async_task::Runnable;
 
 /// Task execution priority levels for controlling scheduler behavior.
@@ -97,6 +71,7 @@ use async_task::Runnable;
 /// These priority levels map to platform-native scheduling priorities,
 /// allowing fine-grained control over task execution order and resource allocation.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Priority {
     /// Standard priority level for most application tasks.
     ///
@@ -110,6 +85,21 @@ pub enum Priority {
     /// ideal for operations like cleanup, logging, or data processing
     /// that don't require immediate completion.
     Background,
+    /// Higher priority for user-initiated tasks that require prompt execution.
+    /// This priority is suitable for tasks that directly impact user experience,
+    /// such as responding to user input or updating the UI.
+    UserInitiated,
+    /// Highest priority for tasks that require immediate attention to maintain
+    /// application responsiveness.
+    /// This priority should be reserved for critical operations that must
+    /// complete as soon as possible, such as rendering UI updates or handling
+    /// real-time data.
+    UserInteractive,
+    /// Lowest priority for tasks that can be deferred until the system is idle.
+    /// This priority is suitable for maintenance tasks, prefetching data,
+    /// or other operations that do not need to run immediately and can wait
+    /// until the system is less busy.
+    Utility,
 }
 
 /// Creates a new task with the specified execution priority.

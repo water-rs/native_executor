@@ -12,8 +12,11 @@ use crate::{PlatformExecutor, Priority};
 impl From<Priority> for QueuePriority {
     fn from(val: Priority) -> Self {
         match val {
-            Priority::Default => Self::Default,
             Priority::Background => Self::Background,
+            Priority::Utility => Self::Low,
+            Priority::UserInitiated | Priority::UserInteractive => Self::High,
+            // Fallback to Default for any future variants
+            _ => Self::Default,
         }
     }
 }

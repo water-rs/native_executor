@@ -11,7 +11,6 @@ Platform-native async task executor that leverages OS event loops (GCD, GDK) for
 - **Platform-native scheduling**: Direct GCD integration on Apple platforms
 - **Priority-aware execution**: Background vs default task prioritization
 - **Thread-local safety**: Non-Send future execution with compile-time guarantees
-- **High-precision timers**: OS-native timing without busy-waiting
 - **Thread-safe utilities**: `LocalValue`, `OnceValue`, `MainValue` containers
 - **Zero-cost abstractions**: Direct OS API usage, no additional runtime
 
@@ -93,7 +92,7 @@ let len = main_val.handle(|s| s.len()).await;
 ## Platform Support
 
 **Current**: Apple platforms (macOS, iOS, tvOS, watchOS) via Grand Central Dispatch\
-**Planned**: Linux (GDK), Windows (IOCP), Android (Looper), WebAssembly
+**Planned**: Linux (GDK), Android (Looper)
 
 Unsupported platforms fail at compile-time with clear error messages.
 
