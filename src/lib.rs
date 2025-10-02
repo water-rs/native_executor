@@ -10,7 +10,7 @@ mod apple;
 compile_error!("native_executor currently only supports Apple platforms, more to come soon!");
 
 use async_task::Task;
-use executor_core::{Executor, LocalExecutor};
+use executor_core::{async_task::AsyncTask, Executor, LocalExecutor};
 pub mod mailbox;
 pub mod timer;
 use core::time::Duration;
@@ -53,14 +53,24 @@ trait PlatformExecutor {
 }
 
 impl Executor for NativeExecutor {
-    fn spawn<T: Send + 'static>(&self, fut: impl Future<Output = T> + Send + 'static) -> Task<T> {
-        spawn(fut)
-    }
+    type Task<T: Send + 'static>=AsyncTask<T>;
+
+    fn spawn<Fut>(&self, fut: Fut) -> Self::Task<Fut::Output>
+        where
+            Fut: Future<Output: Send> + Send + 'static {
+        spawn(fut).into()
+    } 
+    
 }
 
+
+
 impl LocalExecutor for NativeExecutor {
-    fn spawn_local<T: 'static>(&self, fut: impl Future<Output = T> + 'static) -> Task<T> {
-        spawn_local(fut)
+    type Task<T: 'static> = AsyncTask<T>;
+    fn spawn_local<Fut>(&self, fut: Fut) -> Self::Task<Fut::Output>
+        where
+            Fut: Future + 'static {
+         spawn_local(fut).into()
     }
 }
 

@@ -87,13 +87,11 @@ impl<T: 'static> Mailbox<T> {
     pub fn new<E: LocalExecutor>(executor: E, value: T) -> Self {
         let (sender, receiver) = unbounded::<Box<dyn Send + FnOnce(&T)>>();
 
-        executor
-            .spawn_local(async move {
-                while let Ok(update) = receiver.recv().await {
-                    update(&value);
-                }
-            })
-            .detach();
+        let _fut = executor.spawn_local(async move {
+            while let Ok(update) = receiver.recv().await {
+                update(&value);
+            }
+        });
         Self { sender }
     }
 
