@@ -6,7 +6,7 @@ extern crate alloc;
 #[cfg(target_vendor = "apple")]
 mod apple;
 
-#[cfg(all(not(target_vendor = "apple"), not(docsrs)))]
+#[cfg(all(not(target_vendor = "apple"), not(doc)))]
 compile_error!("native_executor currently only supports Apple platforms, more to come soon!");
 
 use async_task::Task;
