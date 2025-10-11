@@ -62,11 +62,11 @@ spawn_with_priority(async { /* background work */ }, Priority::Background);
 use native_executor::timer::{Timer, sleep};
 use std::time::Duration;
 
-# async {
-Timer::after(Duration::from_millis(100)).await;  // Precise timing
-Timer::after_secs(2).await;                      // Convenience method
-sleep(1).await;                                  // Simple sleep
-# };
+async {
+    Timer::after(Duration::from_millis(100)).await;  // Precise timing
+    Timer::after_secs(2).await;                      // Convenience method
+    sleep(1).await;                                  // Simple sleep
+};
 ```
 
 ### Thread-Safe Containers
@@ -84,9 +84,9 @@ let value = once.take();
 
 // Cross-thread with main-thread execution
 let main_val = MainValue::new(String::from("UI data"));
-# async {
-let len = main_val.handle(|s| s.len()).await;
-# };
+async {
+    let len = main_val.handle(|s| s.len()).await;
+};
 ```
 
 ## Platform Support
