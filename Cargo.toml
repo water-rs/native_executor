@@ -20,6 +20,10 @@ features = ["async-task"]
 [target.'cfg(target_vendor = "apple")'.dependencies]
 dispatch = "0.2.0"
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+wasm-bindgen = "0.2"
+
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg", "docsrs"]
 

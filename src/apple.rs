@@ -38,8 +38,8 @@ impl PlatformExecutor for ApplePlatformExecutor {
         queue.exec_async(f);
     }
 
-    fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static) {
-        let queue = Queue::global(dispatch::QueuePriority::Default);
+    fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static, priority: Priority) {
+        let queue = Queue::global(priority.into());
         queue.exec_after(delay, f);
     }
 }

@@ -142,7 +142,7 @@ impl Future for Timer {
                 finished.store(true, Ordering::Release);
                 // Wake the task that's waiting on this timer
                 waker.wake();
-            });
+            }, crate::Priority::Default);
         }
 
         // The timer hasn't completed yet

@@ -6,11 +6,11 @@ extern crate alloc;
 #[cfg(target_vendor = "apple")]
 mod apple;
 
-#[cfg(all(not(target_vendor = "apple"), not(doc)))]
-compile_error!("native_executor currently only supports Apple platforms, more to come soon!");
+#[cfg(target_arch = "wasm32")]
+mod web;
 
 use async_task::Task;
-use executor_core::{async_task::AsyncTask, Executor, LocalExecutor};
+use executor_core::{Executor, LocalExecutor, async_task::AsyncTask};
 pub mod mailbox;
 pub mod timer;
 use core::time::Duration;
@@ -18,14 +18,18 @@ use core::time::Duration;
 #[cfg(target_vendor = "apple")]
 pub use apple::ApplePlatformExecutor as NativeExecutor;
 
+#[cfg(target_arch = "wasm32")]
+pub use web::WebExecutor as NativeExecutor;
+
+#[cfg(all(not(target_vendor = "apple"), not(target_arch = "wasm32")))]
 mod unsupported {
     use core::time::Duration;
 
     use crate::{PlatformExecutor, Priority};
 
-    #[allow(unused)]
-    /// A stub executor for unsupported platforms that panics on use.
+    #[derive(Debug, Clone, Copy, Default)]
     pub struct UnsupportedExecutor;
+
     impl PlatformExecutor for UnsupportedExecutor {
         fn exec_main(_f: impl FnOnce() + Send + 'static) {
             panic!("exec_main is not supported on this platform");
@@ -35,13 +39,12 @@ mod unsupported {
             panic!("exec is not supported on this platform");
         }
 
-        fn exec_after(_delay: Duration, _f: impl FnOnce() + Send + 'static) {
+        fn exec_after(_delay: Duration, _f: impl FnOnce() + Send + 'static, _priority: Priority) {
             panic!("exec_after is not supported on this platform");
         }
     }
 }
-
-#[cfg(not(target_vendor = "apple"))]
+#[cfg(all(not(target_vendor = "apple"), not(target_arch = "wasm32")))]
 /// The native executor implementation.
 pub use unsupported::UnsupportedExecutor as NativeExecutor;
 
@@ -49,28 +52,27 @@ trait PlatformExecutor {
     fn exec_main(f: impl FnOnce() + Send + 'static);
     fn exec(f: impl FnOnce() + Send + 'static, priority: Priority);
 
-    fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static);
+    fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static, priority: Priority);
 }
 
 impl Executor for NativeExecutor {
-    type Task<T: Send + 'static>=AsyncTask<T>;
+    type Task<T: Send + 'static> = AsyncTask<T>;
 
     fn spawn<Fut>(&self, fut: Fut) -> Self::Task<Fut::Output>
-        where
-            Fut: Future<Output: Send> + Send + 'static {
+    where
+        Fut: Future<Output: Send> + Send + 'static,
+    {
         spawn(fut).into()
-    } 
-    
+    }
 }
-
-
 
 impl LocalExecutor for NativeExecutor {
     type Task<T: 'static> = AsyncTask<T>;
     fn spawn_local<Fut>(&self, fut: Fut) -> Self::Task<Fut::Output>
-        where
-            Fut: Future + 'static {
-         spawn_local(fut).into()
+    where
+        Fut: Future + 'static,
+    {
+        spawn_local(fut).into()
     }
 }
 
