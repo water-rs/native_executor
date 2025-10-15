@@ -21,8 +21,7 @@ use core::{
     task::{Context, Poll},
     time::Duration,
 };
-
-use alloc::sync::Arc;
+use std::sync::Arc;
 
 use crate::{NativeExecutor, PlatformExecutor};
 
@@ -137,12 +136,16 @@ impl Future for Timer {
             let finished = self.finished.clone();
 
             // Schedule the callback to run after the specified duration
-            NativeExecutor::exec_after(duration, move || {
-                // Mark the timer as finished
-                finished.store(true, Ordering::Release);
-                // Wake the task that's waiting on this timer
-                waker.wake();
-            }, crate::Priority::Default);
+            NativeExecutor::exec_after(
+                duration,
+                move || {
+                    // Mark the timer as finished
+                    finished.store(true, Ordering::Release);
+                    // Wake the task that's waiting on this timer
+                    waker.wake();
+                },
+                crate::Priority::Default,
+            );
         }
 
         // The timer hasn't completed yet

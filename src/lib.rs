@@ -1,13 +1,17 @@
 #![doc = include_str!("../README.md")]
-#![no_std]
 #![warn(missing_docs, missing_debug_implementations)]
-extern crate alloc;
 
 #[cfg(target_vendor = "apple")]
 mod apple;
 
 #[cfg(target_arch = "wasm32")]
 mod web;
+
+#[cfg(target_os = "android")]
+mod android;
+
+#[cfg(feature = "polyfill")]
+pub mod polyfill;
 
 use async_task::Task;
 use executor_core::{Executor, LocalExecutor, async_task::AsyncTask};
@@ -21,7 +25,15 @@ pub use apple::ApplePlatformExecutor as NativeExecutor;
 #[cfg(target_arch = "wasm32")]
 pub use web::WebExecutor as NativeExecutor;
 
-#[cfg(all(not(target_vendor = "apple"), not(target_arch = "wasm32")))]
+#[cfg(target_os = "android")]
+pub use android::AndroidPlatformExecutor as NativeExecutor;
+
+#[cfg(all(
+    not(target_vendor = "apple"),
+    not(target_arch = "wasm32"),
+    not(target_os = "android"),
+    not(feature = "polyfill")
+))]
 mod unsupported {
     use core::time::Duration;
 
@@ -44,9 +56,20 @@ mod unsupported {
         }
     }
 }
-#[cfg(all(not(target_vendor = "apple"), not(target_arch = "wasm32")))]
+#[cfg(all(
+    not(target_vendor = "apple"),
+    not(target_arch = "wasm32"),
+    not(target_os = "android"),
+    not(feature = "polyfill")
+))]
 /// The native executor implementation.
 pub use unsupported::UnsupportedExecutor as NativeExecutor;
+
+#[cfg(all(
+    not(any(target_vendor = "apple", target_arch = "wasm32", target_os = "android")),
+    feature = "polyfill"
+))]
+pub use polyfill::PolyfillExecutor as NativeExecutor;
 
 trait PlatformExecutor {
     fn exec_main(f: impl FnOnce() + Send + 'static);

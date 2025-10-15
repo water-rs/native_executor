@@ -32,7 +32,6 @@
 //! }).await;
 //! ```
 
-use alloc::boxed::Box;
 use async_channel::{Sender, unbounded};
 use executor_core::LocalExecutor;
 

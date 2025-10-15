@@ -91,8 +91,8 @@ let len = main_val.handle(|s| s.len()).await;
 
 ## Platform Support
 
-**Current**: Apple platforms (macOS, iOS, tvOS, watchOS) via Grand Central Dispatch\
-**Planned**: Linux (GDK), Android (Looper)
+**Current**: Apple platforms (macOS, iOS, tvOS, watchOS) via Grand Central Dispatch, Android (native worker queues)\
+**Planned**: Linux (GDK)
 
 Unsupported platforms fail at compile-time with clear error messages.
 
