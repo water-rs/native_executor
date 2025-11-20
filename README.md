@@ -96,6 +96,30 @@ let len = main_val.handle(|s| s.len()).await;
 
 Unsupported platforms fail at compile-time with clear error messages.
 
+## Polyfill Feature
+
+The optional `polyfill` feature (enabled by default) provides a simulated
+executor for targets without a native implementation. Its behavior is as
+follows:
+
+- On Apple, Android, and `wasm32` targets the feature is a no-op – the native
+  executors and timers always take precedence.
+- On other targets the crate will not build unless the `polyfill` feature is
+  enabled. Disabling it makes the lack of a native executor a hard error.
+- The polyfill spins up its own worker threads and exposes a synthetic
+  "main thread". Call `native_executor::polyfill::start_main_executor()` on a
+  dedicated thread before using `spawn_main` or `spawn_local`.
+- Because this main thread is not provided by the OS event loop, code that
+  depends on true main-thread semantics (UI frameworks, platform APIs, etc.)
+  may behave differently. The feature exists only as a portability fallback.
+
+Example setup for unsupported targets:
+
+```rust
+#[cfg(all(feature = "polyfill", not(any(target_vendor = "apple", target_arch = "wasm32", target_os = "android"))))]
+std::thread::spawn(|| native_executor::polyfill::start_main_executor());
+```
+
 ## Examples
 
 ```bash

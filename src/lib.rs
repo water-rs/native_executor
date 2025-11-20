@@ -29,41 +29,12 @@ pub use web::WebExecutor as NativeExecutor;
 pub use android::AndroidPlatformExecutor as NativeExecutor;
 
 #[cfg(all(
-    not(target_vendor = "apple"),
-    not(target_arch = "wasm32"),
-    not(target_os = "android"),
+    not(any(target_vendor = "apple", target_arch = "wasm32", target_os = "android")),
     not(feature = "polyfill")
 ))]
-mod unsupported {
-    use core::time::Duration;
-
-    use crate::{PlatformExecutor, Priority};
-
-    #[derive(Debug, Clone, Copy, Default)]
-    pub struct UnsupportedExecutor;
-
-    impl PlatformExecutor for UnsupportedExecutor {
-        fn exec_main(_f: impl FnOnce() + Send + 'static) {
-            panic!("exec_main is not supported on this platform");
-        }
-
-        fn exec(_f: impl FnOnce() + Send + 'static, _priority: Priority) {
-            panic!("exec is not supported on this platform");
-        }
-
-        fn exec_after(_delay: Duration, _f: impl FnOnce() + Send + 'static, _priority: Priority) {
-            panic!("exec_after is not supported on this platform");
-        }
-    }
-}
-#[cfg(all(
-    not(target_vendor = "apple"),
-    not(target_arch = "wasm32"),
-    not(target_os = "android"),
-    not(feature = "polyfill")
-))]
-/// The native executor implementation.
-pub use unsupported::UnsupportedExecutor as NativeExecutor;
+compile_error!(
+    "native-executor: no platform-native executor is available. Enable the `polyfill` feature to use the simulated executor on this target."
+);
 
 #[cfg(all(
     not(any(target_vendor = "apple", target_arch = "wasm32", target_os = "android")),
