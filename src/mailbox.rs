@@ -15,21 +15,24 @@
 //! # Examples
 //!
 //! ```rust
-//! use native_executor::Mailbox;
-//! use std::collections::HashMap;
+//! # async fn docs() {
+//! use native_executor::mailbox::Mailbox;
+//! use std::{cell::RefCell, collections::HashMap};
 //!
 //! // Create a mailbox containing a HashMap on the main executor
-//! let mailbox = Mailbox::main(HashMap::<String, i32>::new());
+//! let mailbox = Mailbox::main(RefCell::new(HashMap::<String, i32>::new()));
 //!
 //! // Send updates to the value (non-blocking)
 //! mailbox.handle(|map| {
-//!     map.insert("key".to_string(), 42);
+//!     map.borrow_mut().insert("key".to_string(), 42);
 //! });
 //!
 //! // Make async calls that return values
 //! let value = mailbox.call(|map| {
-//!     map.get("key").copied().unwrap_or(0)
+//!     map.borrow().get("key").copied().unwrap_or(0)
 //! }).await;
+//! # let _ = value;
+//! # }
 //! ```
 
 use async_channel::{Sender, unbounded};
@@ -77,10 +80,11 @@ impl<T: 'static> Mailbox<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use native_executor::{Mailbox, MainExecutor};
-    /// use std::collections::HashMap;
+    /// use native_executor::{mailbox::Mailbox, NativeExecutor};
+    /// use std::{cell::RefCell, collections::HashMap};
     ///
-    /// let mailbox = Mailbox::new(MainExecutor, HashMap::<String, i32>::new());
+    /// let mailbox = Mailbox::new(NativeExecutor, RefCell::new(HashMap::<String, i32>::new()));
+    /// # let _ = mailbox;
     /// ```
     #[allow(clippy::needless_pass_by_value)]
     pub fn new<E: LocalExecutor>(executor: E, value: T) -> Self {
@@ -96,7 +100,7 @@ impl<T: 'static> Mailbox<T> {
 
     /// Creates a new mailbox with the given value on the main executor.
     ///
-    /// This is a convenience method equivalent to `Mailbox::new(MainExecutor, value)`.
+    /// This is a convenience method equivalent to `Mailbox::new(NativeExecutor, value)`.
     /// The background task will be spawned on the main executor.
     ///
     /// # Parameters
@@ -106,10 +110,11 @@ impl<T: 'static> Mailbox<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use native_executor::Mailbox;
-    /// use std::collections::HashMap;
+    /// use native_executor::mailbox::Mailbox;
+    /// use std::{cell::RefCell, collections::HashMap};
     ///
-    /// let mailbox = Mailbox::main(HashMap::<String, i32>::new());
+    /// let mailbox = Mailbox::main(RefCell::new(HashMap::<String, i32>::new()));
+    /// # let _ = mailbox;
     /// ```
     pub fn main(value: T) -> Self {
         Self::new(NativeExecutor, value)
@@ -131,14 +136,14 @@ impl<T: 'static> Mailbox<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use native_executor::Mailbox;
-    /// use std::collections::HashMap;
+    /// use native_executor::mailbox::Mailbox;
+    /// use std::{cell::RefCell, collections::HashMap};
     ///
-    /// let mailbox = Mailbox::main(HashMap::<String, i32>::new());
+    /// let mailbox = Mailbox::main(RefCell::new(HashMap::<String, i32>::new()));
     ///
     /// // Send a non-blocking update
     /// mailbox.handle(|map| {
-    ///     map.insert("key".to_string(), 42);
+    ///     map.borrow_mut().insert("key".to_string(), 42);
     /// });
     /// ```
     pub fn handle(&self, update: impl FnOnce(&T) + Send + 'static) {
@@ -167,16 +172,17 @@ impl<T: 'static> Mailbox<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use native_executor::Mailbox;
-    /// use std::collections::HashMap;
-    ///
     /// # async fn example() {
-    /// let mailbox = Mailbox::main(HashMap::<String, i32>::new());
+    /// use native_executor::mailbox::Mailbox;
+    /// use std::{cell::RefCell, collections::HashMap};
+    ///
+    /// let mailbox = Mailbox::main(RefCell::new(HashMap::<String, i32>::new()));
     ///
     /// // Make an async call that returns a value
     /// let value = mailbox.call(|map| {
-    ///     map.get("key").copied().unwrap_or(0)
+    ///     map.borrow().get("key").copied().unwrap_or(0)
     /// }).await;
+    /// # let _ = value;
     /// # }
     /// ```
     pub async fn call<R>(&self, f: impl FnOnce(&T) -> R + Send + 'static) -> R

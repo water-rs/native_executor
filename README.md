@@ -11,7 +11,7 @@ Platform-native async task executor that leverages OS event loops (GCD, GDK) for
 - **Platform-native scheduling**: Direct GCD integration on Apple platforms
 - **Priority-aware execution**: Background vs default task prioritization
 - **Thread-local safety**: Non-Send future execution with compile-time guarantees
-- **Thread-safe utilities**: `LocalValue`, `OnceValue`, `MainValue` containers
+- **Mailbox-based messaging**: Share state via serialized cross-thread queues
 - **Zero-cost abstractions**: Direct OS API usage, no additional runtime
 
 ## Installation
@@ -69,24 +69,32 @@ sleep(1).await;                                  // Simple sleep
 # };
 ```
 
-### Thread-Safe Containers
+### Mailbox Messaging
 
 ```rust
-use native_executor::{LocalValue, OnceValue, MainValue};
+use native_executor::mailbox::Mailbox;
+use std::{cell::RefCell, collections::HashMap};
 
-// Thread-local access only
-let local = LocalValue::new(42);
-assert_eq!(*local, 42);
+let mailbox = Mailbox::main(RefCell::new(HashMap::<String, i32>::new()));
 
-// Single-consumption semantics
-let once = OnceValue::new("consume once");
-let value = once.take();
+// Send fire-and-forget updates
+mailbox.handle(|map| {
+    map.borrow_mut().insert("key".to_string(), 42);
+});
 
-// Cross-thread with main-thread execution
-let main_val = MainValue::new(String::from("UI data"));
-# async {
-let len = main_val.handle(|s| s.len()).await;
-# };
+# async fn docs() {
+let mailbox = Mailbox::main(RefCell::new(HashMap::<String, i32>::new()));
+
+mailbox.handle(|map| {
+    map.borrow_mut().insert("key".to_string(), 7);
+});
+
+// Await a response from the mailbox task
+let value = mailbox.call(|map| {
+    map.borrow().get("key").copied().unwrap_or_default()
+}).await;
+assert_eq!(value, 7);
+# }
 ```
 
 ## Platform Support
