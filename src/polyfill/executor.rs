@@ -1,12 +1,19 @@
-use executor_core::{Executor, LocalExecutor, async_task::AsyncTask};
+#![allow(dead_code)]
+
+use async_task::{self as async_task_crate, Runnable};
+use executor_core::{Executor, async_task::AsyncTask};
 use futures_lite::future::block_on;
 use std::{
+    future::Future,
     panic::catch_unwind,
     sync::{Once, OnceLock},
     thread,
 };
 
-use crate::{PlatformExecutor, polyfill::timer::PolyfillTimer};
+use crate::{
+    PlatformExecutor,
+    polyfill::{assert_main_thread, register_main_thread, timer::PolyfillTimer},
+};
 
 /// Polyfill executor implementation using async-executor.
 ///
@@ -60,6 +67,7 @@ static MAIN_EXECUTOR: OnceLock<async_executor::Executor<'static>> = OnceLock::ne
 ///
 /// Panics if the main executor has already been started.
 pub fn start_main_executor() {
+    register_main_thread();
     let main_exec = async_executor::Executor::new();
     MAIN_EXECUTOR
         .set(main_exec)
@@ -97,6 +105,18 @@ impl PlatformExecutor for PolyfillExecutor {
         Fut: Future<Output: Send> + Send + 'static,
     {
         main_executor().spawn(fut).into()
+    }
+
+    fn spawn_main_local<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
+    where
+        Fut: Future + 'static,
+    {
+        assert_main_thread("spawn_main_local");
+        let (runnable, task) = async_task_crate::spawn_local(fut, |runnable: Runnable| {
+            runnable.run();
+        });
+        runnable.run();
+        task.into()
     }
 
     fn sleep(duration: std::time::Duration) -> Self::Timer {

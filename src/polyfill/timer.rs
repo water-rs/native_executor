@@ -1,3 +1,7 @@
+#![allow(dead_code)]
+
+use std::future::Future;
+
 pub struct PolyfillTimer {
     timer: async_io::Timer,
 }

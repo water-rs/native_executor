@@ -1,12 +1,27 @@
-mod apple;
-use std::time::Duration;
+use std::{future::Future, time::Duration};
 
-pub use apple::AppleExecutor;
+#[cfg(target_vendor = "apple")]
+mod apple;
 use executor_core::{Executor, LocalExecutor, async_task::AsyncTask};
 
+#[cfg(target_os = "android")]
 mod android;
+#[cfg(target_arch = "wasm32")]
+mod web;
 
-mod polyfill;
+#[cfg(any(feature = "polyfill", target_os = "android"))]
+pub(crate) mod polyfill;
+
+#[cfg(all(
+    not(feature = "polyfill"),
+    not(target_vendor = "apple"),
+    not(target_os = "android"),
+    not(target_arch = "wasm32")
+))]
+compile_error!(
+    "native-executor has no backend for this target; enable the `polyfill` feature \
+     to build on unsupported platforms."
+);
 
 /// Task execution priority levels for controlling scheduler behavior.
 ///
@@ -54,13 +69,28 @@ trait PlatformExecutor {
     fn spawn_main<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
     where
         Fut: Future<Output: Send> + Send + 'static;
+    fn spawn_main_local<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
+    where
+        Fut: Future + 'static;
 }
 
 #[cfg(target_vendor = "apple")]
 type NativeExecutorInner = apple::AppleExecutor;
 
-#[cfg(target_vendor = "apple")]
-type NativeTimerInner = apple::AppleTimer;
+#[cfg(target_os = "android")]
+type NativeExecutorInner = android::AndroidExecutor;
+
+#[cfg(target_arch = "wasm32")]
+type NativeExecutorInner = web::WebExecutor;
+
+#[cfg(all(
+    feature = "polyfill",
+    not(any(target_vendor = "apple", target_os = "android", target_arch = "wasm32"))
+))]
+type NativeExecutorInner = polyfill::executor::PolyfillExecutor;
+
+#[cfg(target_os = "android")]
+pub use android::register_android_main_thread;
 
 #[derive(Debug)]
 pub struct NativeExecutor(NativeExecutorInner);
@@ -71,35 +101,42 @@ impl NativeExecutor {
     }
 
     pub fn with_priority(priority: Priority) -> Self {
-        Self(NativeExecutorInner::with_priority(priority))
+        Self(<NativeExecutorInner as PlatformExecutor>::with_priority(
+            priority,
+        ))
     }
 
     pub fn spawn_main<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
     where
         Fut: Future<Output: Send> + Send + 'static,
     {
-        self.0.spawn_main(fut)
+        <NativeExecutorInner as PlatformExecutor>::spawn_main(&self.0, fut)
     }
 
     pub fn spawn<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
     where
         Fut: Future<Output: Send> + Send + 'static,
     {
-        self.0.spawn(fut)
+        <NativeExecutorInner as PlatformExecutor>::spawn(&self.0, fut)
     }
 
     pub fn spawn_main_local<Fut>(&self, fut: Fut) -> <Self as LocalExecutor>::Task<Fut::Output>
     where
         Fut: Future + 'static,
     {
-        // Check that we are on the main thread. Or else panic.
-        todo!()
+        <NativeExecutorInner as PlatformExecutor>::spawn_main_local(&self.0, fut)
     }
 }
 
 /// A timer that completes after a specified duration.
 #[derive(Debug)]
-pub struct NativeTimer(NativeTimerInner);
+pub struct NativeTimer(<NativeExecutorInner as PlatformExecutor>::Timer);
+
+impl NativeTimer {
+    pub fn after(duration: Duration) -> Self {
+        Self(<NativeExecutorInner as PlatformExecutor>::sleep(duration))
+    }
+}
 
 impl Future for NativeTimer {
     type Output = ();
@@ -129,6 +166,10 @@ impl LocalExecutor for NativeExecutor {
     where
         Fut: Future + 'static,
     {
-        todo!()
+        <NativeExecutorInner as PlatformExecutor>::spawn_main_local(&self.0, fut)
     }
+}
+
+pub fn sleep(duration: Duration) -> NativeTimer {
+    NativeTimer::after(duration)
 }
