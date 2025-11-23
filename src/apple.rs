@@ -338,6 +338,7 @@ type dispatch_time_t = u64;
 type dispatch_function_t = Option<unsafe extern "C" fn(*mut core::ffi::c_void)>;
 
 #[repr(C)]
+#[allow(non_camel_case_types)]
 struct dispatch_source_type_s {
     _private: [u8; 0],
 }

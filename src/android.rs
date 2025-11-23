@@ -1,36 +1,70 @@
-use async_task as async_task_crate;
+#![cfg(target_os = "android")]
+
 use executor_core::async_task::{self as core_async_task, AsyncTask, Runnable};
+use jni::sys::{JNI_GetCreatedJavaVMs, jsize};
+use jni::{JavaVM, errors::Error as JniError};
+use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl, pipe, read, write};
+use ndk::looper::{FdEvent, ThreadLooper};
 use std::{
-    collections::VecDeque,
+    ffi::c_void,
     future::Future,
+    os::fd::{AsRawFd, BorrowedFd, RawFd},
+    panic, ptr,
     sync::{
         OnceLock,
-        atomic::{AtomicBool, Ordering},
-        Mutex,
+        atomic::{AtomicI32, Ordering},
     },
+    thread::{self, ThreadId},
     time::Duration,
 };
+use thiserror::Error;
 
 use crate::{
     PlatformExecutor, Priority,
-    polyfill::{self, executor::PolyfillExecutor, timer::PolyfillTimer},
+    polyfill::{executor::PolyfillExecutor, timer::PolyfillTimer},
 };
+
+type Task = Box<dyn FnOnce() + Send + 'static>;
+struct TaskWrapper(Option<Task>);
+
+static PIPE_WRITE_FD: AtomicI32 = AtomicI32::new(-1);
+static ANDROID_MAIN_THREAD_ID: OnceLock<ThreadId> = OnceLock::new();
+
+#[derive(Debug, Error)]
+pub enum AndroidInitError {
+    #[error("library already initialized")]
+    AlreadyInitialized,
+    #[error("must be called from the Android UI thread")]
+    WrongThread,
+    #[error("failed to retrieve JavaVM")]
+    VmNotFound,
+    #[error("JNI error: {0}")]
+    Jni(#[from] JniError),
+    #[error("failed to create pipe or register with looper")]
+    PipeError,
+    #[error("dispatcher not initialized; call register_android_main_thread on the UI thread first")]
+    NotInitialized,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct AndroidExecutor(PolyfillExecutor);
 
-static MAIN_DISPATCHER: OnceLock<MainDispatcher> = OnceLock::new();
-
-/// Register the real Android UI thread as the main executor target.
+/// Initialize the Android main-thread dispatcher.
 ///
-/// This must be called on the application's main (UI) thread before calling
-/// [`NativeExecutor::spawn_main`] or [`NativeExecutor::spawn_local`] on Android.
-/// The function binds to the thread's choreographer and uses it to schedule
-/// main-thread tasks without spinning up an additional thread.
-#[cfg(target_os = "android")]
-pub fn register_android_main_thread() {
-    polyfill::register_main_thread();
-    MainDispatcher::install();
+/// Must be called **on the Android UI thread** (e.g. from a JNI entrypoint).
+pub fn register_android_main_thread() -> Result<(), AndroidInitError> {
+    if PIPE_WRITE_FD.load(Ordering::SeqCst) != -1 {
+        return Err(AndroidInitError::AlreadyInitialized);
+    }
+
+    if !check_is_main_thread()? {
+        return Err(AndroidInitError::WrongThread);
+    }
+
+    setup_pipe()?;
+    let tid = thread::current().id();
+    let _ = ANDROID_MAIN_THREAD_ID.set(tid);
+    Ok(())
 }
 
 impl PlatformExecutor for AndroidExecutor {
@@ -55,11 +89,12 @@ impl PlatformExecutor for AndroidExecutor {
     where
         Fut: Future<Output: Send> + Send + 'static,
     {
-        let dispatcher = MainDispatcher::get();
         let (runnable, task) = core_async_task::spawn(fut, |runnable| {
-            dispatcher.enqueue(runnable);
+            dispatch_to_main(runnable)
+                .unwrap_or_else(|e| panic!("failed to dispatch to Android UI thread: {e}"));
         });
-        dispatcher.enqueue(runnable);
+        dispatch_to_main(runnable)
+            .unwrap_or_else(|e| panic!("failed to dispatch to Android UI thread: {e}"));
         task
     }
 
@@ -67,97 +102,112 @@ impl PlatformExecutor for AndroidExecutor {
     where
         Fut: Future + 'static,
     {
-        polyfill::assert_main_thread("spawn_main_local");
-        let (runnable, task) = async_task_crate::spawn_local(fut, |runnable| runnable.run());
+        assert_android_main_thread("spawn_main_local");
+        let (runnable, task) = core_async_task::spawn_local(fut, |runnable| {
+            runnable.run();
+        });
         runnable.run();
         task.into()
     }
 }
 
-#[derive(Debug)]
-struct MainDispatcher {
-    choreographer: *mut ndk_sys::AChoreographer,
-    queue: Mutex<VecDeque<Runnable>>,
-    callback_scheduled: AtomicBool,
-}
-
-impl MainDispatcher {
-    fn install() {
-        if MAIN_DISPATCHER.get().is_some() {
-            return;
-        }
-
-        let choreographer = unsafe { ndk_sys::AChoreographer_getInstance() };
-        assert!(
-            !choreographer.is_null(),
-            "AChoreographer_getInstance returned null. Call register_android_main_thread from the UI thread."
-        );
-
-        MAIN_DISPATCHER
-            .set(MainDispatcher {
-                choreographer,
-                queue: Mutex::new(VecDeque::new()),
-                callback_scheduled: AtomicBool::new(false),
-            })
-            .expect("MainDispatcher already initialized");
+fn dispatch_to_main(runnable: Runnable) -> Result<(), AndroidInitError> {
+    let fd = PIPE_WRITE_FD.load(Ordering::Acquire);
+    if fd < 0 {
+        return Err(AndroidInitError::NotInitialized);
     }
 
-    fn get() -> &'static MainDispatcher {
-        MAIN_DISPATCHER
-            .get()
-            .unwrap_or_else(|| panic!("register_android_main_thread must be called on the UI thread before spawning to the main executor"))
-    }
+    let wrapper = Box::new(TaskWrapper(Some(Box::new(move || {
+        runnable.run();
+    }))));
+    let ptr: *mut TaskWrapper = Box::into_raw(wrapper);
+    let addr_bytes = (ptr as usize).to_ne_bytes();
 
-    fn enqueue(&self, runnable: Runnable) {
-        {
-            let mut guard = self.queue.lock().expect("MainDispatcher queue poisoned");
-            guard.push_back(runnable);
-        }
-        self.schedule_callback();
-    }
-
-    fn schedule_callback(&self) {
-        if self
-            .callback_scheduled
-            .swap(true, Ordering::AcqRel)
-        {
-            return;
-        }
+    let res = unsafe { write(fd, addr_bytes.as_ptr() as *const c_void, addr_bytes.len()) };
+    if res < 0 {
+        // recover the box to avoid leak
         unsafe {
-            ndk_sys::AChoreographer_postFrameCallback(
-                self.choreographer,
-                Some(run_frame_callbacks),
-                self as *const _ as *mut _,
-            );
+            drop(Box::from_raw(ptr));
         }
+        return Err(AndroidInitError::PipeError);
     }
 
-    fn run_ready(&self) {
-        loop {
-            let runnable = {
-                let mut guard = self.queue.lock().expect("MainDispatcher queue poisoned");
-                guard.pop_front()
-            };
-            match runnable {
-                Some(r) => r.run(),
-                None => break,
-            }
-        }
-        self.callback_scheduled.store(false, Ordering::Release);
+    Ok(())
+}
 
-        if !self.queue.lock().expect("MainDispatcher queue poisoned").is_empty() {
-            self.schedule_callback();
+fn check_is_main_thread() -> Result<bool, AndroidInitError> {
+    let mut buffer = [ptr::null_mut(); 1];
+    let mut count: jsize = 0;
+    let res = unsafe { JNI_GetCreatedJavaVMs(buffer.as_mut_ptr(), 1, &mut count) };
+    if res != 0 || count == 0 {
+        return Err(AndroidInitError::VmNotFound);
+    }
+
+    let vm = unsafe { JavaVM::from_raw(buffer[0])? };
+    let mut env = vm.attach_current_thread()?;
+
+    let looper_class = env.find_class("android/os/Looper")?;
+    let main_looper = env
+        .call_static_method(&looper_class, "getMainLooper", "()Landroid/os/Looper;", &[])?
+        .l()?;
+    let my_looper = env
+        .call_static_method(&looper_class, "myLooper", "()Landroid/os/Looper;", &[])?
+        .l()?;
+
+    Ok(env.is_same_object(&main_looper, &my_looper)?)
+}
+
+fn setup_pipe() -> Result<(), AndroidInitError> {
+    let mut fds: [RawFd; 2] = [0; 2];
+    if unsafe { pipe(fds.as_mut_ptr()) } != 0 {
+        return Err(AndroidInitError::PipeError);
+    }
+    let read_fd = fds[0];
+    let write_fd = fds[1];
+
+    unsafe {
+        let flags = fcntl(read_fd, F_GETFL);
+        fcntl(read_fd, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    let looper = ThreadLooper::for_thread().ok_or(AndroidInitError::PipeError)?;
+    looper
+        .add_fd_with_callback(
+            unsafe { BorrowedFd::borrow_raw(read_fd) },
+            FdEvent::INPUT,
+            move |fd, _event| {
+                pipe_callback(fd.as_raw_fd());
+                true
+            },
+        )
+        .map_err(|_| AndroidInitError::PipeError)?;
+
+    PIPE_WRITE_FD.store(write_fd, Ordering::Release);
+    Ok(())
+}
+
+fn pipe_callback(fd: RawFd) {
+    let mut buffer = [0u8; std::mem::size_of::<usize>()];
+    loop {
+        let len = unsafe { read(fd, buffer.as_mut_ptr() as *mut c_void, buffer.len()) };
+        if len == std::mem::size_of::<usize>() as isize {
+            let ptr_addr = usize::from_ne_bytes(buffer);
+            let mut wrapper = unsafe { Box::from_raw(ptr_addr as *mut TaskWrapper) };
+            let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                if let Some(task) = wrapper.0.take() {
+                    task();
+                }
+            }));
+        } else {
+            break;
         }
     }
 }
 
-unsafe extern "C" fn run_frame_callbacks(
-    _frame_time_nanos: libc::c_long,
-    data: *mut core::ffi::c_void,
-) {
-    if data.is_null() {
-        return;
+fn assert_android_main_thread(op: &str) {
+    if let Some(main_id) = ANDROID_MAIN_THREAD_ID.get() {
+        if *main_id != thread::current().id() {
+            panic!("{op} must be called from the Android UI thread");
+        }
     }
-    let dispatcher = unsafe { &*(data as *const MainDispatcher) };
-    dispatcher.run_ready();
 }

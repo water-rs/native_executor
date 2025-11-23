@@ -5,12 +5,15 @@ mod apple;
 use executor_core::{Executor, LocalExecutor, async_task::AsyncTask};
 
 #[cfg(target_os = "android")]
-mod android;
+pub mod android;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
-#[cfg(any(feature = "polyfill", target_os = "android"))]
-pub(crate) mod polyfill;
+#[cfg(any(
+    all(feature = "polyfill", not(target_arch = "wasm32")),
+    target_os = "android"
+))]
+pub mod polyfill;
 
 #[cfg(all(
     not(feature = "polyfill"),
@@ -27,6 +30,15 @@ compile_error!(
 ///
 /// These priority levels map to platform-native scheduling priorities,
 /// allowing fine-grained control over task execution order and resource allocation.
+///
+/// # Platform notes
+/// - Apple (macOS/iOS/Catalyst) and wasm/web backends are ready to use with no extra setup.
+/// - Android **requires** calling [`register_android_main_thread`](crate::register_android_main_thread)
+///   on the real UI thread before any `spawn_main`/`spawn_main_local` usage, so the executor can
+///   dispatch tasks back to the platform main looper.
+/// - Polyfill backend (enabled via the `polyfill` feature on unsupported targets) needs you to
+///   create a dedicated thread and call [`polyfill::executor::start_main_executor`] there to
+///   simulate a main thread before using `spawn_main`/`spawn_local`.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Priority {
@@ -154,7 +166,7 @@ impl Executor for NativeExecutor {
     where
         Fut: Future<Output: Send> + Send + 'static,
     {
-        self.0.spawn(fut)
+        <NativeExecutorInner as PlatformExecutor>::spawn(&self.0, fut)
     }
 }
 

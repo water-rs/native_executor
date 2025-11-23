@@ -13,7 +13,7 @@ use std::{
     task::{Context, Poll, Waker},
     time::Duration,
 };
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, prelude::wasm_bindgen};
 use wasm_bindgen_futures::spawn_local;
 
 use crate::{PlatformExecutor, Priority};
@@ -188,8 +188,11 @@ fn duration_to_millis(duration: Duration) -> i32 {
     duration.as_millis().min(i32::MAX as u128) as i32
 }
 
-#[wasm_bindgen::prelude::wasm_bindgen(js_namespace = globalThis, js_name = setTimeout)]
-extern "C" fn set_timeout(callback: &Function, timeout: i32) -> i32;
+#[wasm_bindgen(js_namespace = globalThis)]
+extern "C" {
+    #[wasm_bindgen(js_name = setTimeout)]
+    fn set_timeout(callback: &Function, timeout: i32) -> i32;
 
-#[wasm_bindgen::prelude::wasm_bindgen(js_namespace = globalThis, js_name = clearTimeout)]
-extern "C" fn clear_timeout(handle: i32);
+    #[wasm_bindgen(js_name = clearTimeout)]
+    fn clear_timeout(handle: i32);
+}

@@ -2,12 +2,12 @@
 
 use std::future::Future;
 
+#[derive(Debug)]
 pub struct PolyfillTimer {
     timer: async_io::Timer,
 }
 
 impl PolyfillTimer {
-    /// Creates a new timer that completes after the specified duration.
     pub fn after(duration: std::time::Duration) -> Self {
         Self {
             timer: async_io::Timer::after(duration),
