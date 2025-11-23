@@ -1,76 +1,12 @@
-#![doc = include_str!("../README.md")]
-#![warn(missing_docs, missing_debug_implementations)]
-
-#[cfg(target_vendor = "apple")]
 mod apple;
+use std::time::Duration;
 
-#[cfg(target_arch = "wasm32")]
-mod web;
+pub use apple::AppleExecutor;
+use executor_core::{Executor, LocalExecutor, async_task::AsyncTask};
 
-#[cfg(target_os = "android")]
 mod android;
 
-#[cfg(feature = "polyfill")]
-pub mod polyfill;
-
-use async_task::Task;
-use executor_core::{Executor, LocalExecutor, async_task::AsyncTask};
-pub mod mailbox;
-pub mod timer;
-use core::time::Duration;
-
-#[cfg(target_vendor = "apple")]
-pub use apple::ApplePlatformExecutor as NativeExecutor;
-
-#[cfg(target_arch = "wasm32")]
-pub use web::WebExecutor as NativeExecutor;
-
-#[cfg(target_os = "android")]
-pub use android::AndroidPlatformExecutor as NativeExecutor;
-
-#[cfg(all(
-    not(any(target_vendor = "apple", target_arch = "wasm32", target_os = "android")),
-    not(feature = "polyfill")
-))]
-compile_error!(
-    "native-executor: no platform-native executor is available. Enable the `polyfill` feature to use the simulated executor on this target."
-);
-
-#[cfg(all(
-    not(any(target_vendor = "apple", target_arch = "wasm32", target_os = "android")),
-    feature = "polyfill"
-))]
-pub use polyfill::PolyfillExecutor as NativeExecutor;
-
-trait PlatformExecutor {
-    fn exec_main(f: impl FnOnce() + Send + 'static);
-    fn exec(f: impl FnOnce() + Send + 'static, priority: Priority);
-
-    fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static, priority: Priority);
-}
-
-impl Executor for NativeExecutor {
-    type Task<T: Send + 'static> = AsyncTask<T>;
-
-    fn spawn<Fut>(&self, fut: Fut) -> Self::Task<Fut::Output>
-    where
-        Fut: Future<Output: Send> + Send + 'static,
-    {
-        spawn(fut).into()
-    }
-}
-
-impl LocalExecutor for NativeExecutor {
-    type Task<T: 'static> = AsyncTask<T>;
-    fn spawn_local<Fut>(&self, fut: Fut) -> Self::Task<Fut::Output>
-    where
-        Fut: Future + 'static,
-    {
-        spawn_local(fut).into()
-    }
-}
-
-use async_task::Runnable;
+mod polyfill;
 
 /// Task execution priority levels for controlling scheduler behavior.
 ///
@@ -108,152 +44,91 @@ pub enum Priority {
     Utility,
 }
 
-/// Creates a new task with the specified execution priority.
-///
-/// This allows fine-grained control over task scheduling, enabling
-/// background tasks to yield to higher-priority operations.
-///
-/// # Arguments
-/// * `future` - The future to execute asynchronously
-/// * `priority` - The scheduling priority for this task
-///
-/// # Returns
-/// A `Task` handle that can be awaited to retrieve the result
-///
-/// # Examples
-/// ```rust
-/// use native_executor::{spawn_with_priority, Priority};
-///
-/// // High-priority task for time-sensitive operations
-/// let urgent = spawn_with_priority(async {
-///     // Your time-sensitive work here
-///     42
-/// }, Priority::Default);
-///
-/// // Background task that won't interfere with UI responsiveness
-/// let cleanup = spawn_with_priority(async {
-///     // Your background work here
-///     "done"
-/// }, Priority::Background);
-/// ```
-pub fn spawn_with_priority<Fut>(future: Fut, priority: Priority) -> Task<Fut::Output>
-where
-    Fut: Future + Send + 'static,
-    Fut::Output: Send,
-{
-    let (runnable, task) = async_task::spawn(future, move |runnable: Runnable| {
-        NativeExecutor::exec(
-            move || {
-                runnable.run();
-            },
-            priority,
-        );
-    });
-
-    runnable.schedule();
-    task
+trait PlatformExecutor {
+    type Timer: Future<Output = ()>;
+    fn with_priority(priority: Priority) -> Self;
+    fn sleep(duration: Duration) -> Self::Timer;
+    fn spawn<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
+    where
+        Fut: Future<Output: Send> + Send + 'static;
+    fn spawn_main<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
+    where
+        Fut: Future<Output: Send> + Send + 'static;
 }
 
-/// Creates a new thread-local task that runs on the main thread.
-///
-/// This function is designed for futures that are not `Send` and must execute
-/// on the main thread.
-///
-/// # Arguments
-/// * `future` - The non-Send future to execute on the main thread
-///
-/// # Returns
-/// A `Task` handle that can be awaited to retrieve the result
-///
+#[cfg(target_vendor = "apple")]
+type NativeExecutorInner = apple::AppleExecutor;
+
+#[cfg(target_vendor = "apple")]
+type NativeTimerInner = apple::AppleTimer;
+
+#[derive(Debug)]
+pub struct NativeExecutor(NativeExecutorInner);
+
+impl NativeExecutor {
+    pub fn new() -> Self {
+        Self::with_priority(Priority::default())
+    }
+
+    pub fn with_priority(priority: Priority) -> Self {
+        Self(NativeExecutorInner::with_priority(priority))
+    }
+
+    pub fn spawn_main<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
+    where
+        Fut: Future<Output: Send> + Send + 'static,
+    {
+        self.0.spawn_main(fut)
+    }
+
+    pub fn spawn<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
+    where
+        Fut: Future<Output: Send> + Send + 'static,
+    {
+        self.0.spawn(fut)
+    }
+
+    pub fn spawn_main_local<Fut>(&self, fut: Fut) -> <Self as LocalExecutor>::Task<Fut::Output>
+    where
+        Fut: Future + 'static,
+    {
+        // Check that we are on the main thread. Or else panic.
+        todo!()
+    }
+}
+
+/// A timer that completes after a specified duration.
+#[derive(Debug)]
+pub struct NativeTimer(NativeTimerInner);
+
+impl Future for NativeTimer {
+    type Output = ();
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        std::pin::pin!(&mut self.0).poll(cx)
+    }
+}
+
+impl Executor for NativeExecutor {
+    type Task<T: Send + 'static> = AsyncTask<T>;
+    fn spawn<Fut>(&self, fut: Fut) -> Self::Task<Fut::Output>
+    where
+        Fut: Future<Output: Send> + Send + 'static,
+    {
+        self.0.spawn(fut)
+    }
+}
+
 /// # Panics
-/// This function may panic if not called from a main thread
-///
-/// # Examples
-/// ```rust
-/// use native_executor::spawn_local;
-/// use std::rc::Rc;
-///
-/// // Rc is not Send, so we need spawn_local
-/// let local_data = Rc::new(42);
-/// let task = spawn_local(async move {
-///     *local_data + 58
-/// });
-/// ```
-pub fn spawn_local<Fut>(future: Fut) -> Task<Fut::Output>
-where
-    Fut: Future + 'static,
-{
-    let (runnable, task) = async_task::spawn_local(future, move |runnable: Runnable| {
-        NativeExecutor::exec_main(move || {
-            runnable.run();
-        });
-    });
-
-    runnable.schedule();
-    task
-}
-
-/// Creates a new task with default priority.
-///
-/// This is the primary function for spawning async tasks. The task will be
-/// executed with default priority using platform-native scheduling.
-///
-/// # Arguments
-/// * `future` - The future to execute asynchronously
-///
-/// # Returns
-/// A `Task` handle that can be awaited to retrieve the result
-///
-/// # Examples
-/// ```rust
-/// use native_executor::spawn;
-///
-/// let task = spawn(async {
-///     // Your async work here
-///     42
-/// });
-/// ```
-pub fn spawn<Fut>(future: Fut) -> Task<Fut::Output>
-where
-    Fut: Future + Send + 'static,
-    Fut::Output: Send,
-{
-    spawn_with_priority(future, Priority::default())
-}
-
-/// Creates a new task that executes on the main thread.
-///
-/// This function schedules a `Send` future to run specifically on the main thread.
-/// This is useful for operations that must happen on the main thread, such as
-/// UI updates or accessing main-thread-only APIs.
-///
-/// # Arguments
-/// * `future` - The Send future to execute on the main thread
-///
-/// # Returns
-/// A `Task` handle that can be awaited to retrieve the result
-///
-/// # Examples
-/// ```rust
-/// use native_executor::spawn_main;
-///
-/// let task = spawn_main(async {
-///     // This runs on the main thread
-///     println!("Running on main thread");
-///     "done"
-/// });
-/// ```
-pub fn spawn_main<Fut>(future: Fut) -> Task<Fut::Output>
-where
-    Fut: Future + Send + 'static,
-    Fut::Output: Send,
-{
-    let (runnable, task) = async_task::spawn(future, move |runnable: Runnable| {
-        NativeExecutor::exec_main(move || {
-            runnable.run();
-        });
-    });
-
-    runnable.schedule();
-    task
+/// It panics if not on main thread.
+impl LocalExecutor for NativeExecutor {
+    type Task<T: 'static> = AsyncTask<T>;
+    fn spawn_local<Fut>(&self, fut: Fut) -> Self::Task<Fut::Output>
+    where
+        Fut: Future + 'static,
+    {
+        todo!()
+    }
 }

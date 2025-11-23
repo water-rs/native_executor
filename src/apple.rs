@@ -1,45 +1,53 @@
-//! Apple platform implementation using Grand Central Dispatch (GCD).
-//!
-//! This module provides the native executor implementation for Apple platforms
-//! (macOS, iOS, tvOS, watchOS) by leveraging Grand Central Dispatch for optimal
-//! performance and system integration.
+use executor_core::{Executor, LocalExecutor, async_task::AsyncTask};
 
-use core::time::Duration;
-use dispatch::{Queue, QueuePriority};
+use crate::PlatformExecutor;
 
-use crate::{PlatformExecutor, Priority};
+#[derive(Debug)]
+pub struct AppleExecutor;
 
-impl From<Priority> for QueuePriority {
-    fn from(val: Priority) -> Self {
-        match val {
-            Priority::Background => Self::Background,
-            Priority::Utility => Self::Low,
-            Priority::UserInitiated | Priority::UserInteractive => Self::High,
-            // Fallback to Default for any future variants
-            _ => Self::Default,
-        }
+#[derive(Debug)]
+pub struct AppleTimer {}
+
+impl Future for AppleTimer {
+    type Output = ();
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        todo!()
     }
 }
-/// Apple platform executor implementation using Grand Central Dispatch.
-///
-/// This executor provides optimal performance on Apple platforms by directly
-/// leveraging GCD's system-level thread pools and scheduling primitives.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ApplePlatformExecutor;
 
-impl PlatformExecutor for ApplePlatformExecutor {
-    fn exec_main(f: impl FnOnce() + Send + 'static) {
-        let main = Queue::main();
-        main.exec_async(f);
+impl AppleExecutor {
+    /// Send a task to be executed on the main thread.
+    pub fn spawn_main<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
+    where
+        Fut: Future<Output: Send> + Send + 'static,
+    {
+        todo!()
+    }
+}
+
+impl PlatformExecutor for AppleExecutor {
+    type Timer = AppleTimer;
+    fn spawn<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
+    where
+        Fut: Future<Output: Send> + Send + 'static,
+    {
+        todo!()
     }
 
-    fn exec(f: impl FnOnce() + Send + 'static, priority: Priority) {
-        let queue = Queue::global(priority.into());
-        queue.exec_async(f);
+    fn spawn_main<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
+    where
+        Fut: Future<Output: Send> + Send + 'static,
+    {
+        todo!()
     }
 
-    fn exec_after(delay: Duration, f: impl FnOnce() + Send + 'static, priority: Priority) {
-        let queue = Queue::global(priority.into());
-        queue.exec_after(delay, f);
+    fn with_priority(priority: crate::Priority) -> Self {
+        todo!()
+    }
+    fn sleep(duration: std::time::Duration) -> Self::Timer {
+        todo!()
     }
 }
