@@ -9,6 +9,7 @@ Platform-native async task executor that leverages OS event loops (GCD, GDK) for
 ## Features
 
 - **Platform-native scheduling**: Direct GCD integration on Apple platforms
+- **Structured concurrency**: Tasks are tied to their handles; dropping an un-awaited handle cancels the task unless it was detached
 - **Priority-aware execution**: Background vs default task prioritization
 - **Thread-local safety**: Non-Send future execution with compile-time guarantees
 - **Mailbox-based messaging**: Share state via serialized cross-thread queues
@@ -33,15 +34,23 @@ use std::time::Duration;
 let handle = spawn_local(async {
     println!("Starting async task");
 
-    // High-precision timer using platform-native scheduling
     Timer::after(Duration::from_secs(1)).await;
 
     println!("Task completed after 1 second");
 });
+// Keep the task alive: awaiting is structured; detach for fire-and-forget.
+handle.detach();
 
 // Keep the main thread alive to allow tasks to complete
 std::thread::sleep(Duration::from_secs(2));
 ```
+
+## Structured Concurrency
+
+All `spawn*` functions return `AsyncTask` handles that own the task lifecycle. Dropping the
+handle without calling `.await` or `.detach()` cancels the task immediately. Awaiting the
+handle gives structured shutdown and propagates panics; `detach()` opts out and lets the task
+run to completion in the background when you truly need fire-and-forget behavior.
 
 ## Core Components
 

@@ -161,7 +161,7 @@ impl DispatchQueue {
     }
 
     fn main() -> Self {
-        let raw = unsafe { dispatch_get_main_queue() };
+        let raw = dispatch_get_main_queue_handle();
         assert!(!raw.is_null(), "dispatch_get_main_queue returned null");
         Self { raw }
     }
@@ -327,6 +327,11 @@ fn priority_to_qos(priority: Priority) -> libc::c_long {
 #[allow(non_camel_case_types)]
 type dispatch_queue_t = *mut core::ffi::c_void;
 #[allow(non_camel_case_types)]
+#[repr(C)]
+struct dispatch_queue_s {
+    _private: [u8; 0],
+}
+#[allow(non_camel_case_types)]
 type dispatch_source_t = *mut core::ffi::c_void;
 #[allow(non_camel_case_types)]
 type dispatch_object_t = *mut core::ffi::c_void;
@@ -345,8 +350,8 @@ struct dispatch_source_type_s {
 
 const DISPATCH_TIME_NOW: dispatch_time_t = 0;
 
+#[link(name = "System", kind = "framework")]
 unsafe extern "C" {
-    unsafe fn dispatch_get_main_queue() -> dispatch_queue_t;
     unsafe fn dispatch_get_global_queue(
         identifier: libc::c_long,
         flags: libc::c_ulong,
@@ -379,4 +384,9 @@ unsafe extern "C" {
     );
     unsafe fn dispatch_set_finalizer_f(object: dispatch_object_t, finalizer: dispatch_function_t);
     unsafe static _dispatch_source_type_timer: dispatch_source_type_s;
+    unsafe static _dispatch_main_q: dispatch_queue_s;
+}
+
+fn dispatch_get_main_queue_handle() -> dispatch_queue_t {
+    core::ptr::addr_of!(_dispatch_main_q) as *const _ as dispatch_queue_t
 }

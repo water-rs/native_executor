@@ -1,3 +1,9 @@
+//! Platform-native async executor that bridges directly to OS event loops.
+//!
+//! Tasks use structured concurrency semantics: every `spawn*` call returns an
+//! [`AsyncTask`] handle, and dropping that handle cancels the task unless you
+//! awaited it or called [`AsyncTask::detach`] to explicitly opt into
+//! fire-and-forget execution.
 use std::{future::Future, time::Duration};
 
 #[cfg(target_vendor = "apple")]
