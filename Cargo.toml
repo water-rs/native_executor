@@ -21,13 +21,13 @@ block2 = "0.5"
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-sys = "0.6"
 async-io = "2.6.0"
-executor-core = { git = "https://github.com/lexoliu/executor-core", features = ["async-task", "async-executor"] }
+executor-core = { git = "https://github.com/lexoliu/executor-core", features = ["async-task", "async-executor"], branch = "dev" }
 jni = "0.21"
 ndk = "0.9"
 thiserror = "1.0"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
-executor-core = { git = "https://github.com/lexoliu/executor-core", features = ["async-task"] }
+executor-core = { git = "https://github.com/lexoliu/executor-core", features = ["async-task"], branch = "dev" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 async-executor = { version = "1.13.3", optional = true }
