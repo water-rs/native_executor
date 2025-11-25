@@ -1,7 +1,7 @@
 #![cfg(target_os = "android")]
 
 use executor_core::async_task::{self as core_async_task, AsyncTask, Runnable};
-use jni::sys::{JNI_GetCreatedJavaVMs, jsize};
+use jni::sys::jsize;
 use jni::{JavaVM, errors::Error as JniError};
 use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl, pipe, read, write};
 use ndk::looper::{FdEvent, ThreadLooper};
@@ -51,14 +51,12 @@ pub struct AndroidExecutor(PolyfillExecutor);
 
 /// Initialize the Android main-thread dispatcher.
 ///
+/// # Safety
+///
 /// Must be called **on the Android UI thread** (e.g. from a JNI entrypoint).
-pub fn register_android_main_thread() -> Result<(), AndroidInitError> {
+pub unsafe fn register_android_main_thread() -> Result<(), AndroidInitError> {
     if PIPE_WRITE_FD.load(Ordering::SeqCst) != -1 {
         return Err(AndroidInitError::AlreadyInitialized);
-    }
-
-    if !check_is_main_thread()? {
-        return Err(AndroidInitError::WrongThread);
     }
 
     setup_pipe()?;
@@ -133,28 +131,6 @@ fn dispatch_to_main(runnable: Runnable) -> Result<(), AndroidInitError> {
     }
 
     Ok(())
-}
-
-fn check_is_main_thread() -> Result<bool, AndroidInitError> {
-    let mut buffer = [ptr::null_mut(); 1];
-    let mut count: jsize = 0;
-    let res = unsafe { JNI_GetCreatedJavaVMs(buffer.as_mut_ptr(), 1, &mut count) };
-    if res != 0 || count == 0 {
-        return Err(AndroidInitError::VmNotFound);
-    }
-
-    let vm = unsafe { JavaVM::from_raw(buffer[0])? };
-    let mut env = vm.attach_current_thread()?;
-
-    let looper_class = env.find_class("android/os/Looper")?;
-    let main_looper = env
-        .call_static_method(&looper_class, "getMainLooper", "()Landroid/os/Looper;", &[])?
-        .l()?;
-    let my_looper = env
-        .call_static_method(&looper_class, "myLooper", "()Landroid/os/Looper;", &[])?
-        .l()?;
-
-    Ok(env.is_same_object(&main_looper, &my_looper)?)
 }
 
 fn setup_pipe() -> Result<(), AndroidInitError> {
