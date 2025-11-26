@@ -71,11 +71,11 @@ spawn_with_priority(async { /* background work */ }, Priority::Background);
 use native_executor::timer::{Timer, sleep};
 use std::time::Duration;
 
-# async {
-Timer::after(Duration::from_millis(100)).await;  // Precise timing
-Timer::after_secs(2).await;                      // Convenience method
-sleep(1).await;                                  // Simple sleep
-# };
+async {
+    Timer::after(Duration::from_millis(100)).await;  // Precise timing
+    Timer::after_secs(2).await;                      // Convenience method
+    sleep(1).await;                                  // Simple sleep
+};
 ```
 
 ### Mailbox Messaging
@@ -91,19 +91,11 @@ mailbox.handle(|map| {
     map.borrow_mut().insert("key".to_string(), 42);
 });
 
-# async fn docs() {
-let mailbox = Mailbox::main(RefCell::new(HashMap::<String, i32>::new()));
-
-mailbox.handle(|map| {
-    map.borrow_mut().insert("key".to_string(), 7);
-});
-
-// Await a response from the mailbox task
-let value = mailbox.call(|map| {
-    map.borrow().get("key").copied().unwrap_or_default()
-}).await;
-assert_eq!(value, 7);
-# }
+// Cross-thread with main-thread execution
+let main_val = MainValue::new(String::from("UI data"));
+async {
+    let len = main_val.handle(|s| s.len()).await;
+};
 ```
 
 ## Platform Support
