@@ -1,6 +1,6 @@
 [package]
 name = "native-executor"
-version = "0.4.0"
+version = "0.6.0"
 edition = "2024"
 authors = ["Lexo Liu"]
 license = "MIT"
@@ -11,16 +11,48 @@ categories = ["asynchronous", "concurrency"]
 
 [dependencies]
 async-channel = { version = "2.5.0", default-features = false }
-async-task = { version = "4.7.1", default-features = false}
+async-task = { version = "4.7.1"}
+libc = "0.2"
 
-[dependencies.executor-core]
-version = "0.3.1"
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
-dispatch = "0.2.0"
+block2 = "0.5"
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-sys = "0.6"
+async-io = "2.6.0"
+executor-core = { version = "0.7.0" , features = ["async-task", "async-executor"] }
+jni = "0.21"
+ndk = "0.9"
+thiserror = "1.0"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+executor-core = { version = "0.7.0" , features = ["async-task"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+async-executor = { version = "1.13.3", optional = true }
+num_cpus = { version = "1.17.0", optional = true}
+futures-lite = { version = "2.6.1", optional = true}
+async-io = { version = "2.6.0", optional = true}
+
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+
+[dev-dependencies]
+futures-lite = "2.6.1"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["polyfill"]
+polyfill = ["dep:async-executor","dep:num_cpus", "dep:futures-lite","dep:async-io"]
 
 
 [lints]
@@ -33,4 +65,3 @@ clippy.suspicious = "warn"
 clippy.perf = "warn"
 clippy.pedantic = "warn"
 clippy.nursery = "warn"
-

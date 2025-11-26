@@ -9,10 +9,10 @@ Platform-native async task executor that leverages OS event loops (GCD, GDK) for
 ## Features
 
 - **Platform-native scheduling**: Direct GCD integration on Apple platforms
+- **Structured concurrency**: Tasks are tied to their handles; dropping an un-awaited handle cancels the task unless it was detached
 - **Priority-aware execution**: Background vs default task prioritization
 - **Thread-local safety**: Non-Send future execution with compile-time guarantees
-- **High-precision timers**: OS-native timing without busy-waiting
-- **Thread-safe utilities**: `LocalValue`, `OnceValue`, `MainValue` containers
+- **Mailbox-based messaging**: Share state via serialized cross-thread queues
 - **Zero-cost abstractions**: Direct OS API usage, no additional runtime
 
 ## Installation
@@ -21,7 +21,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-native-executor = "0.2.0"
+native-executor = "0.6"
 ```
 
 ## Quick Start
@@ -34,15 +34,23 @@ use std::time::Duration;
 let handle = spawn_local(async {
     println!("Starting async task");
 
-    // High-precision timer using platform-native scheduling
     Timer::after(Duration::from_secs(1)).await;
 
     println!("Task completed after 1 second");
 });
+// Keep the task alive: awaiting is structured; detach for fire-and-forget.
+handle.detach();
 
 // Keep the main thread alive to allow tasks to complete
 std::thread::sleep(Duration::from_secs(2));
 ```
+
+## Structured Concurrency
+
+All `spawn*` functions return `AsyncTask` handles that own the task lifecycle. Dropping the
+handle without calling `.await` or `.detach()` cancels the task immediately. Awaiting the
+handle gives structured shutdown and propagates panics; `detach()` opts out and lets the task
+run to completion in the background when you truly need fire-and-forget behavior.
 
 ## Core Components
 
@@ -70,18 +78,18 @@ async {
 };
 ```
 
-### Thread-Safe Containers
+### Mailbox Messaging
 
 ```rust
-use native_executor::{LocalValue, OnceValue, MainValue};
+use native_executor::mailbox::Mailbox;
+use std::{cell::RefCell, collections::HashMap};
 
-// Thread-local access only
-let local = LocalValue::new(42);
-assert_eq!(*local, 42);
+let mailbox = Mailbox::main(RefCell::new(HashMap::<String, i32>::new()));
 
-// Single-consumption semantics
-let once = OnceValue::new("consume once");
-let value = once.take();
+// Send fire-and-forget updates
+mailbox.handle(|map| {
+    map.borrow_mut().insert("key".to_string(), 42);
+});
 
 // Cross-thread with main-thread execution
 let main_val = MainValue::new(String::from("UI data"));
@@ -92,10 +100,34 @@ async {
 
 ## Platform Support
 
-**Current**: Apple platforms (macOS, iOS, tvOS, watchOS) via Grand Central Dispatch\
-**Planned**: Linux (GDK), Windows (IOCP), Android (Looper), WebAssembly
+**Current**: Apple platforms (macOS, iOS, tvOS, watchOS) via Grand Central Dispatch, Android (native worker queues)\
+**Planned**: Linux (GDK)
 
 Unsupported platforms fail at compile-time with clear error messages.
+
+## Polyfill Feature
+
+The optional `polyfill` feature (enabled by default) provides a simulated
+executor for targets without a native implementation. Its behavior is as
+follows:
+
+- On Apple, Android, and `wasm32` targets the feature is a no-op – the native
+  executors and timers always take precedence.
+- On other targets the crate will not build unless the `polyfill` feature is
+  enabled. Disabling it makes the lack of a native executor a hard error.
+- The polyfill spins up its own worker threads and exposes a synthetic
+  "main thread". Call `native_executor::polyfill::start_main_executor()` on a
+  dedicated thread before using `spawn_main` or `spawn_local`.
+- Because this main thread is not provided by the OS event loop, code that
+  depends on true main-thread semantics (UI frameworks, platform APIs, etc.)
+  may behave differently. The feature exists only as a portability fallback.
+
+Example setup for unsupported targets:
+
+```rust
+#[cfg(all(feature = "polyfill", not(any(target_vendor = "apple", target_arch = "wasm32", target_os = "android"))))]
+std::thread::spawn(|| native_executor::polyfill::start_main_executor());
+```
 
 ## Examples
 
