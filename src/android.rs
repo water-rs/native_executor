@@ -102,8 +102,10 @@ impl PlatformExecutor for AndroidExecutor {
     {
         assert_android_main_thread("spawn_main_local");
         let (runnable, task) = core_async_task::spawn_local(fut, |runnable| {
-            runnable.run();
+            dispatch_to_main(runnable)
+                .unwrap_or_else(|e| panic!("failed to dispatch to Android UI thread: {e}"));
         });
+        // initial poll on the UI thread
         runnable.run();
         task.into()
     }
