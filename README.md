@@ -21,7 +21,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-native-executor = "0.5"
+native-executor = "0.6"
 ```
 
 ## Quick Start

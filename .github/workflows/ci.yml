@@ -1,354 +1,104 @@
 name: CI
 
 on:
-    push:
-        branches: ["**"]
-    pull_request:
-        branches: ["**"]
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
-    CARGO_TERM_COLOR: always
+  CARGO_TERM_COLOR: always
 
 jobs:
-    msrv:
-        name: Find MSRV
-        runs-on: ubuntu-latest
-        outputs:
-            msrv: ${{ steps.msrv-finder.outputs.msrv }}
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust stable
-              uses: dtolnay/rust-toolchain@stable
-
-            - name: Install cargo-msrv
-              run: cargo install cargo-msrv --locked
-
-            - name: Find MSRV
-              id: msrv-finder
-              run: |
-                  MSRV=$(cargo msrv --output-format minimal)
-                  echo "msrv=$MSRV" >> $GITHUB_OUTPUT
-                  echo "Found MSRV: $MSRV"
-
-    lint:
-        name: Clippy & Format
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust nightly
-              uses: dtolnay/rust-toolchain@nightly
-              with:
-                  components: clippy, rustfmt
-
-            - name: Cache cargo registry
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/registry
-                  key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo index
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/git
-                  key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo build
-              uses: actions/cache@v4
-              with:
-                  path: target
-                  key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Check formatting
-              run: cargo fmt -- --check
-
-            - name: Run clippy
-              run: cargo clippy --all-targets --all-features -- -D warnings
-
-    test-linux:
-        name: Test Linux (polyfill)
-        runs-on: ubuntu-latest
-        needs: [msrv, lint]
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust MSRV
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: ${{ needs.msrv.outputs.msrv }}
-
-            - name: Cache cargo registry
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/registry
-                  key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo index
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/git
-                  key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo build
-              uses: actions/cache@v4
-              with:
-                  path: target
-                  key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Run tests
-              run: cargo test --verbose
-
-    test-macos:
-        name: Test macOS
-        runs-on: macos-latest
-        needs: [msrv, lint]
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust MSRV
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: ${{ needs.msrv.outputs.msrv }}
-
-            - name: Cache cargo registry
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/registry
-                  key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo index
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/git
-                  key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo build
-              uses: actions/cache@v4
-              with:
-                  path: target
-                  key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Run tests
-              run: bash scripts/test_macos.sh
-
-    test-wasm:
-        name: Test WASM
-        runs-on: ubuntu-latest
-        needs: lint
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust nightly
-              uses: dtolnay/rust-toolchain@nightly
-              with:
-                  targets: wasm32-unknown-unknown
-
-            - name: Install wasm-pack
-              run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-            - name: Cache cargo registry
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/registry
-                  key: ${{ runner.os }}-wasm-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo index
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/git
-                  key: ${{ runner.os }}-wasm-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo build
-              uses: actions/cache@v4
-              with:
-                  path: target
-                  key: ${{ runner.os }}-wasm-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Run WASM tests
-              run: bash scripts/test_wasm.sh
-
-    test-android:
-        name: Test Android
-        runs-on: ubuntu-latest
-        needs: lint
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust nightly
-              uses: dtolnay/rust-toolchain@nightly
-              with:
-                  targets: aarch64-linux-android
-
-            - name: Setup Java
-              uses: actions/setup-java@v4
-              with:
-                  distribution: "temurin"
-                  java-version: "17"
-
-            - name: Setup Android SDK
-              uses: android-actions/setup-android@v3
-
-            - name: Install Android NDK
-              run: |
-                  sdkmanager --install "ndk;26.1.10909125"
-                  echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
-
-            - name: Cache cargo registry
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/registry
-                  key: ${{ runner.os }}-android-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo index
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/git
-                  key: ${{ runner.os }}-android-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo build
-              uses: actions/cache@v4
-              with:
-                  path: target
-                  key: ${{ runner.os }}-android-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Run Android tests
-              uses: reactivecircus/android-emulator-runner@v2
-              with:
-                  api-level: 31
-                  arch: arm64-v8a
-                  target: default
-                  script: |
-                      export ANDROID_DEVICE=emulator-5554
-                      bash scripts/test_android.sh
-
-    test-ios:
-        name: Test iOS
-        runs-on: macos-latest
-        needs: lint
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust nightly
-              uses: dtolnay/rust-toolchain@nightly
-              with:
-                  targets: aarch64-apple-ios, x86_64-apple-ios
-
-            - name: Cache cargo registry
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/registry
-                  key: ${{ runner.os }}-ios-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo index
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/git
-                  key: ${{ runner.os }}-ios-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo build
-              uses: actions/cache@v4
-              with:
-                  path: target
-                  key: ${{ runner.os }}-ios-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Build iOS targets
-              run: |
-                  cargo build --target aarch64-apple-ios
-                  cargo build --target x86_64-apple-ios
-
-    minimal-versions:
-        name: Minimal Versions Check
-        runs-on: ubuntu-latest
-        needs: lint
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust nightly
-              uses: dtolnay/rust-toolchain@nightly
-
-            - name: Install cargo-hack
-              run: cargo install cargo-hack --locked
-
-            - name: Cache cargo registry
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/registry
-                  key: ${{ runner.os }}-minimal-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo index
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/git
-                  key: ${{ runner.os }}-minimal-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Check minimal versions
-              run: |
-                  cargo hack check --all-features --version-range ..
-
-    coverage:
-        name: Code Coverage
-        runs-on: ubuntu-latest
-        needs: lint
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust nightly
-              uses: dtolnay/rust-toolchain@nightly
-              with:
-                  components: llvm-tools-preview
-
-            - name: Install cargo-llvm-cov
-              run: cargo install cargo-llvm-cov --locked
-
-            - name: Cache cargo registry
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/registry
-                  key: ${{ runner.os }}-coverage-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo index
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/git
-                  key: ${{ runner.os }}-coverage-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Generate coverage
-              run: cargo llvm-cov --all-features --lcov --output-path lcov.info
-
-            - name: Upload to Codecov
-              uses: codecov/codecov-action@v4
-              with:
-                  files: lcov.info
-                  fail_ci_if_error: true
-
-    feature-checks:
-        name: Feature Combination Checks
-        runs-on: ubuntu-latest
-        needs: lint
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust nightly
-              uses: dtolnay/rust-toolchain@nightly
-
-            - name: Install cargo-hack
-              run: cargo install cargo-hack --locked
-
-            - name: Cache cargo registry
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/registry
-                  key: ${{ runner.os }}-features-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo index
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/git
-                  key: ${{ runner.os }}-features-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Check each feature
-              run: cargo hack check --each-feature --no-dev-deps
-
-            - name: Check feature powerset
-              run: cargo hack check --feature-powerset --no-dev-deps --depth 2
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-ubuntu
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  wasm:
+    name: WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-ubuntu
+      - run: cargo build --target wasm32-unknown-unknown --features std
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-ubuntu
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      - uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: true
+  typos:
+    name: Typos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@master
+
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  unused-deps:
+    name: Unused Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-ubuntu
+      - uses: taiki-e/install-action@cargo-machete
+      - run: cargo machete
+
+  feature-checks:
+    name: Features
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-ubuntu
+      - uses: taiki-e/install-action@cargo-hack
+      - run: cargo hack check --each-feature --no-dev-deps
+      - run: cargo hack check --feature-powerset --no-dev-deps
+
+  test:
+    name: Test
+    uses: ./.github/workflows/test.yml
