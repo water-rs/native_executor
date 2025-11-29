@@ -350,7 +350,14 @@ struct dispatch_source_type_s {
 
 const DISPATCH_TIME_NOW: dispatch_time_t = 0;
 
-#[link(name = "System", kind = "framework")]
+#[cfg_attr(
+    any(target_os = "macos", target_os = "ios"),
+    link(name = "System", kind = "dylib")
+)]
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "ios")),
+    link(name = "dispatch", kind = "dylib")
+)]
 unsafe extern "C" {
     unsafe fn dispatch_get_global_queue(
         identifier: libc::c_long,
