@@ -1,7 +1,7 @@
 #![cfg(target_os = "android")]
 
 use futures_lite::future::block_on;
-use native_executor::{sleep, NativeExecutor};
+use native_executor::{NativeExecutor, sleep};
 use std::time::{Duration, Instant};
 
 #[test]

@@ -2,7 +2,11 @@
 
 use futures_lite::future::block_on;
 use native_executor::{NativeExecutor, NativeTimer, Priority};
-use std::{cell::Cell, rc::Rc, time::{Duration, Instant}};
+use std::{
+    cell::Cell,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 #[test]
 fn spawn_background_runs_off_main_thread() {
@@ -21,7 +25,10 @@ fn spawn_main_runs_on_main_thread() {
     let exec = NativeExecutor::new();
     let task = exec.spawn_main(async { unsafe { libc::pthread_main_np() != 0 } });
     let on_main = block_on(task);
-    assert!(on_main, "main tasks should execute on the main dispatch queue");
+    assert!(
+        on_main,
+        "main tasks should execute on the main dispatch queue"
+    );
 }
 
 #[test]

@@ -10,7 +10,6 @@ keywords = ["task", "async", "concurrency", "waterui"]
 categories = ["asynchronous", "concurrency"]
 
 [dependencies]
-async-channel = { version = "2.5.0", default-features = false }
 async-task = { version = "4.7.1"}
 libc = "0.2"
 

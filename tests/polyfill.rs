@@ -1,10 +1,17 @@
-#![cfg(all(feature = "polyfill", not(target_arch = "wasm32"), not(target_os = "android")))]
+#![cfg(all(
+    feature = "polyfill",
+    not(target_arch = "wasm32"),
+    not(target_os = "android")
+))]
 
 use executor_core::Executor;
 use futures_lite::future::block_on;
-use native_executor::polyfill::timer::PolyfillTimer;
 use native_executor::polyfill::executor::PolyfillExecutor;
-use std::{sync::Once, time::{Duration, Instant}};
+use native_executor::polyfill::timer::PolyfillTimer;
+use std::{
+    sync::Once,
+    time::{Duration, Instant},
+};
 
 static START_MAIN: Once = Once::new();
 

@@ -1,6 +1,6 @@
 #![cfg(target_arch = "wasm32")]
 
-use native_executor::{sleep, NativeExecutor};
+use native_executor::{NativeExecutor, sleep};
 use std::time::Duration;
 use wasm_bindgen_test::*;
 
