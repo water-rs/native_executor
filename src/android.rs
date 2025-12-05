@@ -171,8 +171,7 @@ fn pipe_callback(fd: RawFd) {
     loop {
         let len = unsafe { read(fd, buffer.as_mut_ptr().cast::<c_void>(), buffer.len()) };
         if len
-            == isize::try_from(std::mem::size_of::<usize>())
-                .expect("usize does not fit in isize")
+            == isize::try_from(std::mem::size_of::<usize>()).expect("usize does not fit in isize")
         {
             let ptr_addr = usize::from_ne_bytes(buffer);
             let mut wrapper = unsafe { Box::from_raw(ptr_addr as *mut TaskWrapper) };
