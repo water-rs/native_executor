@@ -65,10 +65,10 @@ fi
 echo "==> Building Android tests ($TARGET_ARCH)"
 cargo test --target "$TARGET_ARCH" --no-run "$@"
 
-BIN=$(ls -t "target/$TARGET_ARCH/debug/deps/android-*" 2>/dev/null | head -n1 || true)
+BIN=$(ls -t "target/$TARGET_ARCH/debug/deps"/android-* 2>/dev/null | head -n1 || true)
 # Fallback to unit tests if specific android integration test not found
 if [ -z "$BIN" ]; then
-     BIN=$(ls -t "target/$TARGET_ARCH/debug/deps/native_executor-*" 2>/dev/null | head -n1 || true)
+     BIN=$(ls -t "target/$TARGET_ARCH/debug/deps"/native_executor-* 2>/dev/null | head -n1 || true)
 fi
 
 if [ -z "$BIN" ]; then
