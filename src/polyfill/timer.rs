@@ -8,6 +8,7 @@ pub struct PolyfillTimer {
 }
 
 impl PolyfillTimer {
+    #[must_use]
     pub fn after(duration: std::time::Duration) -> Self {
         Self {
             timer: async_io::Timer::after(duration),

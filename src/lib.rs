@@ -113,11 +113,19 @@ pub use android::register_android_main_thread;
 #[derive(Debug)]
 pub struct NativeExecutor(NativeExecutorInner);
 
+impl Default for NativeExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NativeExecutor {
+    #[must_use]
     pub fn new() -> Self {
         Self::with_priority(Priority::default())
     }
 
+    #[must_use]
     pub fn with_priority(priority: Priority) -> Self {
         Self(<NativeExecutorInner as PlatformExecutor>::with_priority(
             priority,
@@ -151,6 +159,7 @@ impl NativeExecutor {
 pub struct NativeTimer(<NativeExecutorInner as PlatformExecutor>::Timer);
 
 impl NativeTimer {
+    #[must_use]
     pub fn after(duration: Duration) -> Self {
         Self(<NativeExecutorInner as PlatformExecutor>::sleep(duration))
     }
@@ -188,6 +197,7 @@ impl LocalExecutor for NativeExecutor {
     }
 }
 
+#[must_use]
 pub fn sleep(duration: Duration) -> NativeTimer {
     NativeTimer::after(duration)
 }

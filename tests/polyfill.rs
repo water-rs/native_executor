@@ -19,7 +19,7 @@ fn ensure_polyfill_main_executor() {
     START_MAIN.call_once(|| {
         std::thread::Builder::new()
             .name("polyfill-main-executor".into())
-            .spawn(|| native_executor::polyfill::executor::start_main_executor())
+            .spawn(native_executor::polyfill::executor::start_main_executor)
             .expect("failed to start polyfill main executor");
         // Give the executor a moment to initialize before scheduling work.
         std::thread::sleep(Duration::from_millis(30));
@@ -29,7 +29,7 @@ fn ensure_polyfill_main_executor() {
 #[test]
 fn polyfill_spawn_runs_background_task() {
     ensure_polyfill_main_executor();
-    let exec = PolyfillExecutor::default();
+    let exec = PolyfillExecutor;
     let task = exec.spawn(async { 2 + 5 });
     assert_eq!(block_on(task), 7);
 }

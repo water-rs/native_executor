@@ -64,7 +64,7 @@ impl PlatformExecutor for AppleExecutor {
     where
         Fut: Future<Output: Send> + Send + 'static,
     {
-        AppleExecutor::spawn_main(self, fut)
+        Self::spawn_main(self, fut)
     }
 
     fn spawn_main_local<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
@@ -96,7 +96,7 @@ impl AppleTimer {
             dispatch_resume(source.as_object());
         }
 
-        Self { source, state }
+        Self { state, source }
     }
 }
 
@@ -193,11 +193,11 @@ impl DispatchSource {
         Self { raw }
     }
 
-    fn as_raw(&self) -> dispatch_source_t {
+    const fn as_raw(&self) -> dispatch_source_t {
         self.raw
     }
 
-    fn as_object(&self) -> dispatch_object_t {
+    const fn as_object(&self) -> dispatch_object_t {
         self.raw
     }
 
@@ -226,7 +226,7 @@ struct TimerState {
 }
 
 impl TimerState {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             completed: AtomicBool::new(false),
             waker: Mutex::new(None),
@@ -240,6 +240,7 @@ impl TimerState {
             _ => *guard = Some(waker.clone()),
         }
         if self.completed.load(Ordering::Acquire) {
+            #[allow(clippy::collapsible_if)]
             if let Some(w) = guard.take() {
                 w.wake();
             }
@@ -248,7 +249,8 @@ impl TimerState {
 
     fn complete(&self) {
         if !self.completed.swap(true, Ordering::AcqRel) {
-            if let Some(waker) = self.waker.lock().expect("TimerState poisoned").take() {
+            let waker = self.waker.lock().expect("TimerState poisoned").take();
+            if let Some(waker) = waker {
                 waker.wake();
             }
         }
@@ -278,7 +280,7 @@ unsafe extern "C" fn timer_handler(ctx: *mut core::ffi::c_void) {
         return;
     }
     unsafe {
-        let context = &*(ctx as *mut TimerContext);
+        let context = &*ctx.cast::<TimerContext>();
         context.state.complete();
     }
 }
@@ -288,28 +290,28 @@ unsafe extern "C" fn timer_finalizer(ctx: *mut core::ffi::c_void) {
         return;
     }
     unsafe {
-        drop(Box::from_raw(ctx as *mut TimerContext));
+        drop(Box::from_raw(ctx.cast::<TimerContext>()));
     }
 }
 
 fn timer_source_type() -> dispatch_source_type_t {
-    unsafe { &_dispatch_source_type_timer as *const dispatch_source_type_s }
+    core::ptr::addr_of!(_dispatch_source_type_timer).cast()
 }
 
 fn duration_to_dispatch_delta(duration: Duration) -> i64 {
-    duration.as_nanos().min(i64::MAX as u128) as i64
+    i64::try_from(duration.as_nanos().min(i64::MAX as u128)).unwrap_or(i64::MAX)
 }
 
 fn leeway_for_duration(duration: Duration) -> u64 {
+    const MAX_LEEWAY_NS: u64 = 5_000_000;
     if duration.is_zero() {
         return 0;
     }
-    const MAX_LEEWAY_NS: u64 = 5_000_000;
-    duration.as_nanos().min(MAX_LEEWAY_NS as u128) as u64
+    u64::try_from(duration.as_nanos().min(u128::from(MAX_LEEWAY_NS))).unwrap_or(MAX_LEEWAY_NS)
 }
 
 #[allow(unreachable_patterns)]
-fn priority_to_qos(priority: Priority) -> libc::c_long {
+const fn priority_to_qos(priority: Priority) -> libc::c_long {
     use libc::qos_class_t::{
         QOS_CLASS_BACKGROUND, QOS_CLASS_DEFAULT, QOS_CLASS_UNSPECIFIED, QOS_CLASS_USER_INITIATED,
         QOS_CLASS_USER_INTERACTIVE, QOS_CLASS_UTILITY,
@@ -395,5 +397,5 @@ unsafe extern "C" {
 }
 
 fn dispatch_get_main_queue_handle() -> dispatch_queue_t {
-    core::ptr::addr_of!(_dispatch_main_q) as *const _ as dispatch_queue_t
+    core::ptr::addr_of!(_dispatch_main_q).cast_mut().cast()
 }
