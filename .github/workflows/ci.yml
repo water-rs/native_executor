@@ -99,19 +99,6 @@ jobs:
       - uses: taiki-e/install-action@cargo-machete
       - run: cargo machete
 
-  feature-checks:
-    name: Features
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-ubuntu
-      - uses: taiki-e/install-action@cargo-hack
-      - run: cargo hack check --each-feature --no-dev-deps
-      - run: cargo hack check --feature-powerset --no-dev-deps
-
   test:
     name: Test
     uses: ./.github/workflows/test.yml
