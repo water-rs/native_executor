@@ -15,15 +15,6 @@ Platform-native async task executor that leverages OS event loops (GCD, GDK) for
 - **Mailbox-based messaging**: Share state via serialized cross-thread queues
 - **Zero-cost abstractions**: Direct OS API usage, no additional runtime
 
-## Installation
-
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-native-executor = "0.6"
-```
-
 ## Quick Start
 
 ```rust
