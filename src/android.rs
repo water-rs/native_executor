@@ -1,15 +1,13 @@
-#![cfg(target_os = "android")]
-
 use executor_core::async_task::{self as core_async_task, AsyncTask, Runnable};
-use jni::sys::jsize;
-use jni::{JavaVM, errors::Error as JniError};
+use jni::errors::Error as JniError;
 use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl, pipe, read, write};
 use ndk::looper::{FdEvent, ThreadLooper};
 use std::{
+    convert::TryFrom,
     ffi::c_void,
     future::Future,
     os::fd::{AsRawFd, BorrowedFd, RawFd},
-    panic, ptr,
+    panic,
     sync::{
         OnceLock,
         atomic::{AtomicI32, Ordering},
@@ -51,6 +49,10 @@ pub struct AndroidExecutor(PolyfillExecutor);
 
 /// Initialize the Android main-thread dispatcher.
 ///
+/// # Errors
+///
+/// Returns `Err` if the library is already initialized or if the current thread is not the Android UI thread.
+///
 /// # Safety
 ///
 /// Must be called **on the Android UI thread** (e.g. from a JNI entrypoint).
@@ -73,7 +75,7 @@ impl PlatformExecutor for AndroidExecutor {
     }
 
     fn with_priority(priority: Priority) -> Self {
-        AndroidExecutor(PolyfillExecutor::with_priority(priority))
+        Self(PolyfillExecutor::with_priority(priority))
     }
 
     fn spawn<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
@@ -107,7 +109,7 @@ impl PlatformExecutor for AndroidExecutor {
         });
         // initial poll on the UI thread
         runnable.run();
-        task.into()
+        task
     }
 }
 
@@ -123,7 +125,7 @@ fn dispatch_to_main(runnable: Runnable) -> Result<(), AndroidInitError> {
     let ptr: *mut TaskWrapper = Box::into_raw(wrapper);
     let addr_bytes = (ptr as usize).to_ne_bytes();
 
-    let res = unsafe { write(fd, addr_bytes.as_ptr() as *const c_void, addr_bytes.len()) };
+    let res = unsafe { write(fd, addr_bytes.as_ptr().cast::<c_void>(), addr_bytes.len()) };
     if res < 0 {
         // recover the box to avoid leak
         unsafe {
@@ -167,8 +169,11 @@ fn setup_pipe() -> Result<(), AndroidInitError> {
 fn pipe_callback(fd: RawFd) {
     let mut buffer = [0u8; std::mem::size_of::<usize>()];
     loop {
-        let len = unsafe { read(fd, buffer.as_mut_ptr() as *mut c_void, buffer.len()) };
-        if len == std::mem::size_of::<usize>() as isize {
+        let len = unsafe { read(fd, buffer.as_mut_ptr().cast::<c_void>(), buffer.len()) };
+        if len
+            == isize::try_from(std::mem::size_of::<usize>())
+                .expect("usize does not fit in isize")
+        {
             let ptr_addr = usize::from_ne_bytes(buffer);
             let mut wrapper = unsafe { Box::from_raw(ptr_addr as *mut TaskWrapper) };
             let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| {
@@ -184,8 +189,10 @@ fn pipe_callback(fd: RawFd) {
 
 fn assert_android_main_thread(op: &str) {
     if let Some(main_id) = ANDROID_MAIN_THREAD_ID.get() {
-        if *main_id != thread::current().id() {
-            panic!("{op} must be called from the Android UI thread");
-        }
+        assert_eq!(
+            *main_id,
+            thread::current().id(),
+            "{op} must be called from the Android UI thread"
+        );
     }
 }
