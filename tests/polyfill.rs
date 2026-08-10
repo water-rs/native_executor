@@ -21,8 +21,15 @@ fn ensure_polyfill_main_executor() {
             .name("polyfill-main-executor".into())
             .spawn(native_executor::polyfill::executor::start_main_executor)
             .expect("failed to start polyfill main executor");
-        // Give the executor a moment to initialize before scheduling work.
-        std::thread::sleep(Duration::from_millis(30));
+        // Wait on the real readiness signal rather than a fixed delay.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !native_executor::polyfill::is_main_thread_registered() {
+            assert!(
+                Instant::now() < deadline,
+                "polyfill main executor did not register its thread"
+            );
+            std::thread::yield_now();
+        }
     });
 }
 

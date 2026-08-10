@@ -45,6 +45,21 @@ compile_error!(
 /// - Polyfill backend (enabled via the `polyfill` feature on unsupported targets) needs you to
 ///   create a dedicated thread and call [`polyfill::executor::start_main_executor`] there to
 ///   simulate a main thread before using `spawn_main`/`spawn_local`.
+///
+/// # Choosing an executor
+///
+/// [`NativeExecutor`] is the global, work-stealing executor and has no
+/// main-thread affinity, so it is always available.
+///
+/// [`NativeMainExecutor`] dispatches to the platform main thread and only exists
+/// where such a thread does, which is why it is constructed through an
+/// [`Option`] rather than failing at the first spawn.
+///
+/// **If your program owns an event loop — winit, GTK/glib, a frame pump — do not
+/// use [`NativeMainExecutor`].** Implement [`LocalExecutor`] over that loop so
+/// tasks run on the thread that owns your windows and graphics resources.
+/// [`polyfill::executor::start_main_executor`] would otherwise declare an
+/// unrelated thread "main" and dispatch your UI work to the wrong one.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Priority {
@@ -132,6 +147,80 @@ impl NativeExecutor {
         ))
     }
 
+    pub fn spawn<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
+    where
+        Fut: Future<Output: Send> + Send + 'static,
+    {
+        <NativeExecutorInner as PlatformExecutor>::spawn(&self.0, fut)
+    }
+}
+
+/// Reports whether this target has an established main thread to dispatch to.
+///
+/// Apple and web targets always do. Android needs
+/// [`register_android_main_thread`], and the polyfill needs
+/// [`polyfill::executor::start_main_executor`].
+#[must_use]
+#[allow(
+    clippy::missing_const_for_fn,
+    reason = "only the apple/web arm is a constant; the others read a OnceLock"
+)]
+pub fn main_thread_available() -> bool {
+    #[cfg(any(target_vendor = "apple", target_arch = "wasm32"))]
+    {
+        true
+    }
+    #[cfg(target_os = "android")]
+    {
+        android::is_main_thread_registered()
+    }
+    #[cfg(all(
+        feature = "polyfill",
+        not(target_vendor = "apple"),
+        not(target_os = "android"),
+        not(target_arch = "wasm32")
+    ))]
+    {
+        polyfill::is_main_thread_registered()
+    }
+}
+
+/// Dispatches work to the platform main thread.
+///
+/// This is deliberately a separate type from [`NativeExecutor`]: only targets
+/// with an established main thread can produce one, so handing a main-thread
+/// executor to an API that needs one is checked when you construct it rather
+/// than when the first task is spawned.
+///
+/// **If you own an event loop, do not use this type.** Implement
+/// [`LocalExecutor`] over your own loop instead — winit, GTK/glib, or a frame
+/// pump — so tasks run on the thread that owns your windows. This type is for
+/// hosts that have no loop of their own.
+#[derive(Debug)]
+pub struct NativeMainExecutor(NativeExecutorInner);
+
+impl NativeMainExecutor {
+    /// Returns `None` when no main thread has been established.
+    ///
+    /// That is never the case on Apple and web targets. On Android it means
+    /// [`register_android_main_thread`] has not run yet; under the polyfill it
+    /// means no thread is running
+    /// [`polyfill::executor::start_main_executor`].
+    #[must_use]
+    pub fn new() -> Option<Self> {
+        Self::with_priority(Priority::default())
+    }
+
+    /// Like [`NativeMainExecutor::new`], with an explicit priority.
+    #[must_use]
+    pub fn with_priority(priority: Priority) -> Option<Self> {
+        main_thread_available().then(|| {
+            Self(<NativeExecutorInner as PlatformExecutor>::with_priority(
+                priority,
+            ))
+        })
+    }
+
     pub fn spawn_main<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
     where
         Fut: Future<Output: Send> + Send + 'static,
@@ -139,13 +228,11 @@ impl NativeExecutor {
         <NativeExecutorInner as PlatformExecutor>::spawn_main(&self.0, fut)
     }
 
-    pub fn spawn<Fut>(&self, fut: Fut) -> AsyncTask<Fut::Output>
-    where
-        Fut: Future<Output: Send> + Send + 'static,
-    {
-        <NativeExecutorInner as PlatformExecutor>::spawn(&self.0, fut)
-    }
-
+    /// # Panics
+    ///
+    /// Under the polyfill, panics unless called from the thread running
+    /// [`polyfill::executor::start_main_executor`]; that backend runs the task
+    /// inline rather than dispatching it.
     pub fn spawn_main_local<Fut>(&self, fut: Fut) -> <Self as LocalExecutor>::Task<Fut::Output>
     where
         Fut: Future + 'static,
@@ -186,8 +273,9 @@ impl Executor for NativeExecutor {
 }
 
 /// # Panics
-/// It panics if not on main thread.
-impl LocalExecutor for NativeExecutor {
+///
+/// Under the polyfill, panics if not called from the registered main thread.
+impl LocalExecutor for NativeMainExecutor {
     type Task<T: 'static> = AsyncTask<T>;
     fn spawn_local<Fut>(&self, fut: Fut) -> Self::Task<Fut::Output>
     where
