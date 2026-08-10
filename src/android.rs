@@ -56,6 +56,12 @@ pub struct AndroidExecutor(PolyfillExecutor);
 /// # Safety
 ///
 /// Must be called **on the Android UI thread** (e.g. from a JNI entrypoint).
+/// Reports whether [`register_android_main_thread`] has run.
+#[must_use]
+pub fn is_main_thread_registered() -> bool {
+    ANDROID_MAIN_THREAD_ID.get().is_some()
+}
+
 pub unsafe fn register_android_main_thread() -> Result<(), AndroidInitError> {
     if PIPE_WRITE_FD.load(Ordering::SeqCst) != -1 {
         return Err(AndroidInitError::AlreadyInitialized);

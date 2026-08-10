@@ -35,6 +35,13 @@ pub(crate) fn assert_main_thread(op: &str) {
     );
 }
 
+/// Reports whether a thread has been registered as the polyfill main thread by
+/// [`executor::start_main_executor`], regardless of which thread asks.
+#[must_use]
+pub fn is_main_thread_registered() -> bool {
+    MAIN_THREAD_ID.get().is_some()
+}
+
 pub(crate) fn is_main_thread() -> bool {
     MAIN_THREAD_ID
         .get()

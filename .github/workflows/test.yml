@@ -63,6 +63,16 @@ jobs:
                   java-version: "17"
             - uses: android-actions/setup-android@v3
             - uses: Swatinem/rust-cache@v2
+            # ubuntu-latest runners support nested virtualisation, but /dev/kvm is
+            # not accessible to the runner user by default. Without this the
+            # emulator falls back to `-accel off` and boots in software, which
+            # costs minutes per run.
+            - name: Enable KVM
+              run: |
+                  echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+                      | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+                  sudo udevadm control --reload-rules
+                  sudo udevadm trigger --name-match=kvm
             - name: Install NDK
               run: |
                   sdkmanager --install "ndk;26.1.10909125"
