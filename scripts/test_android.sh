@@ -19,6 +19,12 @@ if ! command -v "$ADB_BIN" >/dev/null 2>&1; then
     fi
 fi
 
+PYTHON_BIN="${PYTHON:-python3}"
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    echo "python3 not found; set PYTHON to your interpreter" >&2
+    exit 1
+fi
+
 NDK_ROOT="${ANDROID_NDK_HOME:-$HOME/Library/Android/sdk/ndk/26.1.10909125}"
 if [ ! -d "$NDK_ROOT" ]; then
   # pick the newest NDK under the default location
@@ -63,16 +69,36 @@ else
 fi
 
 echo "==> Building Android tests ($TARGET_ARCH)"
-cargo test --target "$TARGET_ARCH" --no-run "$@"
+# Ask cargo where it put the executables instead of guessing a target layout:
+# the location of test binaries is an implementation detail and has moved before.
+BUILD_JSON=$(cargo test --target "$TARGET_ARCH" --no-run --message-format=json "$@")
 
-BIN=$(ls -t "target/$TARGET_ARCH/debug/deps"/android-* 2>/dev/null | head -n1 || true)
-# Fallback to unit tests if specific android integration test not found
-if [ -z "$BIN" ]; then
-     BIN=$(ls -t "target/$TARGET_ARCH/debug/deps"/native_executor-* 2>/dev/null | head -n1 || true)
-fi
+# Only the `android` integration test and the lib unit tests are meant to run on
+# a device; the other integration binaries are cfg'd out to zero tests there.
+BIN=$(printf '%s\n' "$BUILD_JSON" \
+  | "$PYTHON_BIN" -c '
+import json, sys
+lib, android = None, None
+for line in sys.stdin:
+    try:
+        msg = json.loads(line)
+    except ValueError:
+        continue
+    exe = msg.get("executable")
+    if not exe or msg.get("reason") != "compiler-artifact":
+        continue
+    target = msg.get("target", {})
+    kinds = target.get("kind", [])
+    if target.get("name") == "android" and "test" in kinds:
+        android = exe
+    elif "lib" in kinds:
+        lib = exe
+print(android or lib or "")
+')
 
 if [ -z "$BIN" ]; then
-  echo "Android test binary not found under target/$TARGET_ARCH/debug/deps/" >&2
+  echo "cargo reported no Android test executable for $TARGET_ARCH" >&2
+  printf '%s\n' "$BUILD_JSON" >&2
   exit 1
 fi
 
