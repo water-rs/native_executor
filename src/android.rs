@@ -1,15 +1,14 @@
 #![cfg(target_os = "android")]
 
 use executor_core::async_task::{self as core_async_task, AsyncTask, Runnable};
-use jni::sys::jsize;
-use jni::{JavaVM, errors::Error as JniError};
+use jni::errors::Error as JniError;
 use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl, pipe, read, write};
 use ndk::looper::{FdEvent, ThreadLooper};
 use std::{
     ffi::c_void,
     future::Future,
     os::fd::{AsRawFd, BorrowedFd, RawFd},
-    panic, ptr,
+    panic,
     sync::{
         OnceLock,
         atomic::{AtomicI32, Ordering},
