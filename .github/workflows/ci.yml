@@ -109,8 +109,12 @@ jobs:
         with:
           shared-key: ci-ubuntu
       - uses: taiki-e/install-action@cargo-hack
-      - run: cargo hack check --each-feature --no-dev-deps
-      - run: cargo hack check --feature-powerset --no-dev-deps
+      # Linux has no native backend, so `polyfill` is the backend there and the
+      # crate rejects a build without it (`compile_error!` in src/lib.rs). That
+      # combination is not a configuration to check, it is one the crate
+      # declares unsupported; every other combination is still checked.
+      - run: cargo hack check --each-feature --no-dev-deps --exclude-no-default-features
+      - run: cargo hack check --feature-powerset --no-dev-deps --exclude-no-default-features
 
   test:
     name: Test
