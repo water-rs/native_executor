@@ -1,13 +1,14 @@
-#![allow(dead_code)]
-
 use std::future::Future;
 
+/// A timer backed by [`async_io::Timer`], used on targets without a native one.
 #[derive(Debug)]
 pub struct PolyfillTimer {
     timer: async_io::Timer,
 }
 
 impl PolyfillTimer {
+    /// Creates a timer that completes once `duration` has elapsed.
+    #[must_use]
     pub fn after(duration: std::time::Duration) -> Self {
         Self {
             timer: async_io::Timer::after(duration),

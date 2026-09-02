@@ -43,6 +43,7 @@ fn spawn_main_local_handles_non_send_on_main_thread() {
     });
     let (value, on_main) = block_on(task);
     assert_eq!(value, 1);
+    assert_eq!(counter.get(), 1, "the task should mutate the shared cell");
     assert!(on_main, "local main tasks should stay on the main thread");
 }
 
