@@ -21,21 +21,22 @@ pub(crate) fn register_main_thread() {
             .get()
             .copied()
             .expect("main thread id not initialized");
-        if existing != id {
-            panic!("polyfill main executor already registered on a different thread");
-        }
+        assert_eq!(
+            existing, id,
+            "polyfill main executor already registered on a different thread"
+        );
     }
 }
 
 pub(crate) fn assert_main_thread(op: &str) {
-    if !is_main_thread() {
-        panic!("{op} must be called from the polyfill main thread");
-    }
+    assert!(
+        is_main_thread(),
+        "{op} must be called from the polyfill main thread"
+    );
 }
 
 pub(crate) fn is_main_thread() -> bool {
     MAIN_THREAD_ID
         .get()
-        .map(|id| *id == thread::current().id())
-        .unwrap_or(false)
+        .is_some_and(|id| *id == thread::current().id())
 }
