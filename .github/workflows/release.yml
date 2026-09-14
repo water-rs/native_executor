@@ -1,10 +1,12 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: ["CI"]
+  # crates.io trusted publishing rejects OIDC tokens minted under
+  # `workflow_run`, so publishing runs on the `main` push itself — which
+  # can only come from a merged pull request (conventionally the dev ->
+  # main release PR) whose required checks already passed on the same tree.
+  push:
     branches: [main]
-    types: [completed]
 
 permissions:
   contents: write
@@ -15,7 +17,7 @@ jobs:
   release-plz:
     name: Release
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
         with:
