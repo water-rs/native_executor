@@ -16,7 +16,7 @@ jobs:
                 include:
                     - name: Linux
                       os: ubuntu-latest
-                      script: cargo test --verbose
+                      script: cargo nextest run
                     - name: macOS
                       os: macos-latest
                       script: bash scripts/test_macos.sh
@@ -34,6 +34,7 @@ jobs:
             - uses: Swatinem/rust-cache@v2
               with:
                   key: ${{ matrix.name }}
+            - uses: taiki-e/install-action@nextest
             - run: ${{ matrix.script }}
 
     test-wasm:
