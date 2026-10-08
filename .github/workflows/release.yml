@@ -12,6 +12,7 @@ permissions:
   contents: write
   pull-requests: write
   id-token: write
+  actions: write
 
 jobs:
   release-plz:
@@ -29,6 +30,18 @@ jobs:
       - uses: rust-lang/crates-io-auth-action@v1
         id: crates-io-auth
       - uses: MarcoIeni/release-plz-action@v0.5
+        id: release-plz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
+
+      # The workflow token's pull request triggers no workflow, so its
+      # required gate is dispatched on the release branch here. The action
+      # reports `pr` as `{}` when there is no release pull request, so
+      # `prs_created` is what says whether there is one.
+      - name: Pass the release pull request's gate
+        if: steps.release-plz.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ fromJSON(steps.release-plz.outputs.pr).head_branch }}
+        run: gh workflow run pr-base-gate.yml --repo "${GITHUB_REPOSITORY}" --ref "${HEAD_BRANCH}"
