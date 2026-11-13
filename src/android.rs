@@ -3,7 +3,6 @@ use jni::errors::Error as JniError;
 use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl, pipe, read, write};
 use ndk::looper::{FdEvent, ThreadLooper};
 use std::{
-    convert::TryFrom,
     ffi::c_void,
     future::Future,
     os::fd::{AsRawFd, BorrowedFd, RawFd},

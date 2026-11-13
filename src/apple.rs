@@ -239,20 +239,25 @@ impl TimerState {
             Some(existing) if existing.will_wake(waker) => {}
             _ => *guard = Some(waker.clone()),
         }
-        if self.completed.load(Ordering::Acquire) {
-            #[allow(clippy::collapsible_if)]
-            if let Some(w) = guard.take() {
-                w.wake();
-            }
+        let pending = if self.completed.load(Ordering::Acquire) {
+            guard.take()
+        } else {
+            None
+        };
+        drop(guard);
+        if let Some(pending) = pending {
+            pending.wake();
         }
     }
 
     fn complete(&self) {
-        if !self.completed.swap(true, Ordering::AcqRel) {
-            let waker = self.waker.lock().expect("TimerState poisoned").take();
-            if let Some(waker) = waker {
-                waker.wake();
-            }
+        if self.completed.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        // Release the lock before waking: a waker is free to re-enter the timer.
+        let pending = self.waker.lock().expect("TimerState poisoned").take();
+        if let Some(pending) = pending {
+            pending.wake();
         }
     }
 
@@ -294,8 +299,8 @@ unsafe extern "C" fn timer_finalizer(ctx: *mut core::ffi::c_void) {
     }
 }
 
-fn timer_source_type() -> dispatch_source_type_t {
-    core::ptr::addr_of!(_dispatch_source_type_timer).cast()
+const fn timer_source_type() -> dispatch_source_type_t {
+    &raw const _dispatch_source_type_timer
 }
 
 fn duration_to_dispatch_delta(duration: Duration) -> i64 {
@@ -397,5 +402,7 @@ unsafe extern "C" {
 }
 
 fn dispatch_get_main_queue_handle() -> dispatch_queue_t {
-    core::ptr::addr_of!(_dispatch_main_q).cast_mut().cast()
+    (&raw const _dispatch_main_q)
+        .cast::<core::ffi::c_void>()
+        .cast_mut()
 }
