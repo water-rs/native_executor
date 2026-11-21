@@ -11,6 +11,8 @@ categories = ["asynchronous", "concurrency"]
 
 [dependencies]
 async-task = { version = "4.7.1"}
+
+[target.'cfg(any(target_vendor = "apple", target_os = "android"))'.dependencies]
 libc = "0.2"
 
 [target.'cfg(target_os = "android")'.dependencies]
