@@ -13,10 +13,6 @@ categories = ["asynchronous", "concurrency"]
 async-task = { version = "4.7.1"}
 libc = "0.2"
 
-
-[target.'cfg(target_vendor = "apple")'.dependencies]
-block2 = "0.6"
-
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-sys = "0.6"
 async-io = "2.6.0"
@@ -64,3 +60,4 @@ clippy.suspicious = "warn"
 clippy.perf = "warn"
 clippy.pedantic = "warn"
 clippy.nursery = "warn"
+cargo.unused_dependencies = "deny"
